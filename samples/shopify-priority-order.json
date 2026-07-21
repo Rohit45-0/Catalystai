@@ -1,0 +1,14 @@
+{
+  "source": "Shopify",
+  "connectorId": "shopify",
+  "type": "order_updated",
+  "payload": {
+    "order_id": "5841",
+    "financial_status": "paid",
+    "fulfillment_status": "unfulfilled",
+    "elapsed_hours": 18,
+    "tags": ["priority"],
+    "sku": "LUMA-04",
+    "value": 186
+  }
+}

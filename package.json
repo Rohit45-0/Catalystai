@@ -1,0 +1,58 @@
+{
+  "name": "fulfillguard",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "test": "npm run build && node --test tests/rendered-html.test.mjs",
+    "verify": "npm run lint && npm test",
+    "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
+    "db:generate": "drizzle-kit generate",
+    "video:audio": "powershell -ExecutionPolicy Bypass -File video/generate-narration.ps1 && node video/generate-music.mjs",
+    "video:studio": "remotion studio video/index.ts",
+    "video:still": "remotion still video/index.ts FulfillGuardDemo demo-output/fulfillguard-preview.png --frame=1650",
+    "video:render": "remotion render video/index.ts FulfillGuardDemo demo-output/fulfillguard-build-week-demo.mp4 --codec=h264 --crf=20 --pixel-format=yuv420p"
+  },
+  "dependencies": {
+    "drizzle-orm": "0.45.2",
+    "lucide-react": "^1.25.0",
+    "next": "16.2.6",
+    "react": "19.2.6",
+    "react-dom": "19.2.6"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "1.37.1",
+    "@remotion/bundler": "4.0.495",
+    "@remotion/cli": "4.0.495",
+    "@remotion/media": "4.0.495",
+    "@remotion/renderer": "4.0.495",
+    "@tailwindcss/postcss": "4.2.1",
+    "@types/node": "22.19.19",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "6.0.2",
+    "@vitejs/plugin-rsc": "0.5.26",
+    "drizzle-kit": "0.31.10",
+    "eslint": "9.39.4",
+    "eslint-config-next": "16.2.6",
+    "react-server-dom-webpack": "19.2.6",
+    "remotion": "4.0.495",
+    "tailwindcss": "4.2.1",
+    "typescript": "5.9.3",
+    "vinext": "0.0.50",
+    "vite": "8.0.13",
+    "wrangler": "4.92.0",
+    "zod": "4.3.6"
+  },
+  "overrides": {
+    "next": {
+      "postcss": "8.5.10"
+    }
+  },
+  "type": "module"
+}
