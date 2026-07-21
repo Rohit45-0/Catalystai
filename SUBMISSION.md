@@ -8,7 +8,7 @@
 
 ## Devpost description
 
-Fulfillment teams rarely have one clean system. Orders live in Shopify, warehouse context appears in Slack, invoices arrive by email, and the operating policy is often trapped in documents or someone’s memory. By the time those signals are connected manually, a customer promise or a billing deadline may already be missed.
+Fulfillment teams rarely have one clean system. Orders live in Shopify, warehouse context appears in Slack, invoices arrive by email, and the operating policy is often trapped in documents or someone's memory. By the time those signals are connected manually, a customer promise or a billing deadline may already be missed.
 
 I built FulfillGuard to turn those scattered signals into governed operational action. It connects evidence from order systems and conversations, ranks exceptions by business impact, explains its reasoning, and drafts the next action. External writes remain behind explicit human approval.
 
@@ -33,7 +33,7 @@ FulfillGuard connects ecommerce order state, warehouse conversations, and busine
 ## External submission fields
 
 - **YouTube URL:** PENDING
-- **Code repository URL:** PENDING
+- **Code repository URL:** https://github.com/Rohit45-0/Fullfillguard
 - **Codex `/feedback` Session ID:** PENDING
 - **Live demo URL:** OPTIONAL / PENDING
 - **Team invitations accepted:** CONFIRM IN DEVPOST
@@ -46,8 +46,8 @@ FulfillGuard connects ecommerce order state, warehouse conversations, and busine
 - [x] README setup, sample data, judge path, Codex usage, and GPT-5.6 usage
 - [x] Public-repo MIT license
 - [x] No secrets in `.env.example`
-- [ ] Push repository to GitHub
-- [ ] If private, share with `testing@devpost.com` and `build-week-event@openai.com`
+- [x] Push repository to GitHub
+- [x] Confirm repository is public (private-repository sharing is not required)
 - [ ] Upload final MP4 to YouTube and verify it in an incognito window
 - [ ] Paste the public or unlisted YouTube URL into Devpost
 - [ ] Run `/feedback` from the slash-command menu in this primary Codex thread
