@@ -26,9 +26,9 @@ import {
   useVideoConfig,
 } from "remotion";
 import {
-  FulfillGuardApp,
+  CatalystAIApp,
   type EvidenceEvent,
-  type FulfillGuardDemoState,
+  type CatalystAIDemoState,
   type RealAgentResult,
 } from "../app/page";
 
@@ -38,7 +38,7 @@ const scenes = [
   {
     id: "title",
     seconds: 5,
-    label: "FULFILLGUARD",
+    label: "CATALYST AI",
     caption: "Adaptive operations for ecommerce teams",
   },
   {
@@ -183,7 +183,7 @@ const agentResult: RealAgentResult = {
   approvalRequired: true,
 };
 
-const connectedState: FulfillGuardDemoState = {
+const connectedState: CatalystAIDemoState = {
   activeView: "connections",
   connectedConnectorIds: ["gmail", "slack", "shopify", "webhook"],
   evidenceEvents: demoEvidence,
@@ -248,7 +248,7 @@ function BrowserFrame({
   detail = "standard",
   focus,
 }: {
-  state: FulfillGuardDemoState;
+  state: CatalystAIDemoState;
   panX?: number;
   panY?: number;
   zoom?: number;
@@ -275,7 +275,7 @@ function BrowserFrame({
     <div className="demo-browser">
       <div className="demo-browser-bar">
         <div className="window-controls"><i /><i /><i /></div>
-        <div className="address-bar"><ShieldCheck size={14} /> app.fulfillguard.ai / command-center</div>
+        <div className="address-bar"><ShieldCheck size={14} /> localhost:3006 / command-center</div>
         <div className="working-badge"><span /> LIVE PRODUCT DEMO</div>
       </div>
       <div className={`demo-browser-body demo-detail-${detail}`}>
@@ -283,7 +283,7 @@ function BrowserFrame({
           className="demo-app-canvas"
           style={{ transform: `translate3d(${cameraX}px, ${cameraY}px, 0) scale(${appScale})` }}
         >
-          <FulfillGuardApp key={demoStateKey} demoState={state} />
+          <CatalystAIApp key={demoStateKey} demoState={state} />
         </div>
         {focus ? <FocusBox {...focus} /> : null}
       </div>
@@ -410,7 +410,7 @@ function TitleScene() {
       </div>
       <div className="title-copy" style={{ opacity: copy, transform: `translateY(${interpolate(copy, [0, 1], [28, 0])}px)` }}>
         <span>ADAPTIVE ECOMMERCE OPERATIONS</span>
-        <h1>FulfillGuard</h1>
+        <h1>Catalyst AI</h1>
         <p>Turn disconnected operational signals into governed action.</p>
       </div>
       <div className="title-flow" style={{ opacity: flow, transform: `translateY(${interpolate(flow, [0, 1], [24, 0])}px)` }}>
@@ -478,7 +478,7 @@ function AgentScene() {
   const started = frame >= 70;
   const running = started && frame < 188;
   const complete = frame >= 188;
-  const state: FulfillGuardDemoState = {
+  const state: CatalystAIDemoState = {
     ...connectedState,
     realAgentRunning: running,
     realAgentResult: complete ? agentResult : null,
@@ -743,7 +743,7 @@ function OutroScene() {
     <AbsoluteFill className="outro-card">
       <div className="outro-mark" style={{ opacity: reveal }}><ShieldCheck size={58} /></div>
       <div className="outro-copy" style={{ opacity: reveal, transform: `translateY(${interpolate(reveal, [0, 1], [24, 0])}px)` }}>
-        <span>FULFILLGUARD</span>
+        <span>CATALYST AI</span>
         <h2>Operations that can explain<br />and improve themselves.</h2>
       </div>
       <div className="outro-proof">
@@ -791,7 +791,7 @@ function SceneContent({ scene }: { scene: Scene }) {
   );
 }
 
-export function FulfillGuardDemo() {
+export function CatalystAIDemo() {
   return (
     <AbsoluteFill className="video-root">
       <Audio

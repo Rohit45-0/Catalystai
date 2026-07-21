@@ -7,11 +7,11 @@ type EvidenceEvent = {
   receivedAt?: string;
 };
 
-const store = globalThis as typeof globalThis & { __fulfillGuardEvidence?: Required<EvidenceEvent>[] };
+const store = globalThis as typeof globalThis & { __catalystAIEvidence?: Required<EvidenceEvent>[] };
 
 function events() {
-  store.__fulfillGuardEvidence ??= [];
-  return store.__fulfillGuardEvidence;
+  store.__catalystAIEvidence ??= [];
+  return store.__catalystAIEvidence;
 }
 
 export async function GET() {
@@ -30,7 +30,7 @@ export async function POST(request: Request) {
   };
 
   events().push(event);
-  store.__fulfillGuardEvidence = events().slice(-50);
+  store.__catalystAIEvidence = events().slice(-50);
 
   return Response.json({ ok: true, event });
 }

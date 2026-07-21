@@ -1,11 +1,11 @@
 import { Composition } from "remotion";
-import { FulfillGuardDemo, TOTAL_FRAMES } from "./FulfillGuardDemo";
+import { CatalystAIDemo, TOTAL_FRAMES } from "./CatalystAIDemo";
 
 export function RemotionRoot() {
   return (
     <Composition
-      id="FulfillGuardDemo"
-      component={FulfillGuardDemo}
+      id="CatalystAIDemo"
+      component={CatalystAIDemo}
       durationInFrames={TOTAL_FRAMES}
       fps={30}
       width={1920}

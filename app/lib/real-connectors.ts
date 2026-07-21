@@ -88,7 +88,7 @@ export async function listUnfulfilledShopifyOrders(): Promise<ShopifyOrder[]> {
     },
     body: JSON.stringify({
       query: `#graphql
-        query FulfillGuardUnfulfilledOrders($query: String!) {
+        query CatalystAIUnfulfilledOrders($query: String!) {
           orders(first: 20, query: $query, sortKey: CREATED_AT, reverse: true) {
             edges {
               node {
@@ -205,6 +205,6 @@ export function buildFulfillmentCase(orders: ShopifyOrder[], messages: SlackMess
     reasoning:
       "The agent correlated a currently unfulfilled Shopify order with recent warehouse context. Because the order is priority-tagged, it should be escalated before the customer-facing dispatch SLA is missed.",
     recommendedAction: "Escalate the warehouse pick and prepare a proactive customer update for approval.",
-    draftSlackMessage: `FulfillGuard escalation: ${orderName} is still unfulfilled. Please confirm pick status for ${sku} and reply with ETA. Customer message remains approval-gated.`,
+    draftSlackMessage: `Catalyst AI escalation: ${orderName} is still unfulfilled. Please confirm pick status for ${sku} and reply with ETA. Customer message remains approval-gated.`,
   };
 }

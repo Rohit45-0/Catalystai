@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-test("exposes the interactive FulfillGuard command center", async () => {
+test("exposes the interactive Catalyst AI command center", async () => {
   const [page, css, packageJson] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
@@ -63,7 +63,7 @@ test("runs the Shopify and Slack tool chain with demo fallback", async () => {
   assert.ok(orders.length > 0);
   assert.ok(messages.length > 0);
   assert.match(result.title, /unfulfilled/i);
-  assert.match(result.draftSlackMessage, /FulfillGuard escalation/);
+  assert.match(result.draftSlackMessage, /Catalyst AI escalation/);
 });
 
 test("returns deterministic analysis when no API key is configured", async () => {

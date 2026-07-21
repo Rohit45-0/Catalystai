@@ -1,6 +1,6 @@
-# FulfillGuard
+# Catalyst AI
 
-FulfillGuard is an adaptive operations application for ecommerce teams. It connects order state, warehouse conversations, and business evidence; turns exceptions into explainable cases; and keeps every external write behind human approval.
+Catalyst AI is an adaptive operations application for ecommerce teams. It connects order state, warehouse conversations, and business evidence; turns exceptions into explainable cases; and keeps every external write behind human approval.
 
 **OpenAI Build Week track:** Work and Productivity<br>
 **Judge mode:** Works without API keys or external accounts<br>
@@ -10,7 +10,7 @@ FulfillGuard is an adaptive operations application for ecommerce teams. It conne
 
 Small ecommerce teams coordinate fulfillment across storefronts, warehouse systems, email, Slack, spreadsheets, and third-party logistics providers. Important exceptions are discovered manually, context is scattered, and rigid automations become stale as the real process changes.
 
-FulfillGuard demonstrates a different operating model:
+Catalyst AI demonstrates a different operating model:
 
 1. Detect exceptions across connected systems.
 2. Correlate evidence into a ranked, explainable case.
@@ -111,11 +111,11 @@ When credentials are absent, steps 1-5 use deterministic local data and step 6 r
 - **Agent routes:** Next.js route handlers for evidence ingestion, analysis, and fulfillment-risk orchestration.
 - **Tool adapters:** Shopify Admin GraphQL and Slack Web API with demo-safe fallbacks.
 - **Governance:** source evidence, confidence, approval gates, versioned changes, historical checks, and audit events.
-- **Demo production:** Remotion composition importing the real `FulfillGuardApp` component.
+- **Demo production:** Remotion composition importing the real `CatalystAIApp` component.
 
 ## How Codex and GPT-5.6 were used
 
-FulfillGuard was built collaboratively in Codex during OpenAI Build Week.
+Catalyst AI was built collaboratively in Codex during OpenAI Build Week.
 
 **Codex accelerated implementation:**
 
@@ -138,15 +138,15 @@ The primary Codex `/feedback` Session ID is submitted separately in Devpost.
 
 ## Build Week provenance
 
-The submitted FulfillGuard product was built during the July 13-21, 2026 submission period. Generic starter infrastructure and open-source packages pre-existed. The FulfillGuard product UX, API routes, connector tools, multi-agent workflow builder, maintainer flow, tests, documentation, and demo video were created or meaningfully extended during Build Week.
+The submitted Catalyst AI product was built during the July 13-21, 2026 submission period. Generic starter infrastructure and open-source packages pre-existed. The Catalyst AI product UX, API routes, connector tools, multi-agent workflow builder, maintainer flow, tests, documentation, and demo video were created or meaningfully extended during Build Week.
 
 ## Demo video
 
 The submission video is rendered at 1920x1080, stays under three minutes, and includes a voiceover explaining the product and how Codex and GPT-5.6 Terra were used.
 
-- Local output: `demo-output/fulfillguard-build-week-demo.mp4`
+- Local output: `demo-output/catalyst-ai-build-week-demo.mp4`
 - Narration: `video/narration-script.md`
-- Composition: `video/FulfillGuardDemo.tsx`
+- Composition: `video/CatalystAIDemo.tsx`
 
 ```bash
 npm run video:audio
@@ -158,4 +158,4 @@ The ambient bed and interface sounds are generated locally by `video/generate-mu
 
 ## License and third-party work
 
-FulfillGuard is released under the [MIT License](LICENSE). It uses open-source libraries listed in `package.json`, including Next.js, React, Lucide, and Remotion. Shopify, Slack, Gmail, Salesforce, NetSuite, and OpenAI names identify optional integrations; no third-party logos, footage, or copied product assets are used in the submission video.
+Catalyst AI is released under the [MIT License](LICENSE). It uses open-source libraries listed in `package.json`, including Next.js, React, Lucide, and Remotion. Shopify, Slack, Gmail, Salesforce, NetSuite, and OpenAI names identify optional integrations; no third-party logos, footage, or copied product assets are used in the submission video.

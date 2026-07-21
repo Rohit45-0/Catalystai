@@ -1,5 +1,5 @@
 {
-  "name": "fulfillguard",
+  "name": "catalyst-ai",
   "version": "0.1.0",
   "private": true,
   "engines": {
@@ -15,8 +15,8 @@
     "db:generate": "drizzle-kit generate",
     "video:audio": "powershell -ExecutionPolicy Bypass -File video/generate-narration.ps1 && node video/generate-music.mjs",
     "video:studio": "remotion studio video/index.ts",
-    "video:still": "remotion still video/index.ts FulfillGuardDemo demo-output/fulfillguard-preview.png --frame=1650",
-    "video:render": "remotion render video/index.ts FulfillGuardDemo demo-output/fulfillguard-build-week-demo.mp4 --codec=h264 --crf=20 --pixel-format=yuv420p"
+    "video:still": "remotion still video/index.ts CatalystAIDemo demo-output/catalyst-ai-preview.png --frame=1650",
+    "video:render": "remotion render video/index.ts CatalystAIDemo demo-output/catalyst-ai-build-week-demo.mp4 --codec=h264 --crf=20 --pixel-format=yuv420p"
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",

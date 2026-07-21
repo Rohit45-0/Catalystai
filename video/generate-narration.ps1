@@ -26,7 +26,7 @@ if ($LASTEXITCODE -ne 0) {
 $segments = @(
   @{
     File = "title.mp3"
-    Text = "Meet FulfillGuard: adaptive operations for ecommerce teams."
+    Text = "Meet Catalyst A I: adaptive operations for ecommerce teams."
   },
   @{
     File = "overview.mp3"
@@ -42,7 +42,7 @@ $segments = @(
   },
   @{
     File = "case.mp3"
-    Text = "Order five eight four one is still unfulfilled after eighteen hours. Slack shows its SKU in overflow. FulfillGuard drafts an escalation, then waits for approval."
+    Text = "Order five eight four one is still unfulfilled after eighteen hours. Slack shows its SKU in overflow. Catalyst A I drafts an escalation, then waits for approval."
   },
   @{
     File = "problem.mp3"

@@ -93,7 +93,7 @@ export type RealAgentResult = {
   approvalRequired: boolean;
 };
 
-export type FulfillGuardDemoState = {
+export type CatalystAIDemoState = {
   activeView?: View;
   selectedCaseId?: string;
   approvedCaseIds?: string[];
@@ -210,7 +210,7 @@ const connectorSamples: Record<string, string> = {
 function readSavedEvidence() {
   if (typeof window === "undefined") return [];
   try {
-    return JSON.parse(window.localStorage.getItem("fulfillguard:evidence") || "[]") as EvidenceEvent[];
+    return JSON.parse(window.localStorage.getItem("catalyst-ai:evidence") || "[]") as EvidenceEvent[];
   } catch {
     return [];
   }
@@ -248,7 +248,7 @@ function SourceIcon({ source }: { source: string }) {
   return <Database size={14} />;
 }
 
-export function FulfillGuardApp({ demoState }: { demoState?: FulfillGuardDemoState }) {
+export function CatalystAIApp({ demoState }: { demoState?: CatalystAIDemoState }) {
   const [activeView, setActiveView] = useState<View>(demoState?.activeView ?? "overview");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [cases, setCases] = useState(() =>
@@ -308,7 +308,7 @@ export function FulfillGuardApp({ demoState }: { demoState?: FulfillGuardDemoSta
 
   useEffect(() => {
     if (demoState) return;
-    window.localStorage.setItem("fulfillguard:evidence", JSON.stringify(evidenceEvents));
+    window.localStorage.setItem("catalyst-ai:evidence", JSON.stringify(evidenceEvents));
   }, [demoState, evidenceEvents]);
 
   useEffect(() => {
@@ -523,7 +523,7 @@ export function FulfillGuardApp({ demoState }: { demoState?: FulfillGuardDemoSta
         <div className="brand-row">
           <div className="brand-mark"><ShieldCheck size={19} /></div>
           <div>
-            <div className="brand-name">FulfillGuard</div>
+            <div className="brand-name">Catalyst AI</div>
             <div className="brand-caption">Adaptive operations</div>
           </div>
           <button className="icon-button mobile-close" aria-label="Close navigation" onClick={() => setSidebarOpen(false)}>
@@ -768,7 +768,7 @@ export function FulfillGuardApp({ demoState }: { demoState?: FulfillGuardDemoSta
 }
 
 export default function Home() {
-  return <FulfillGuardApp />;
+  return <CatalystAIApp />;
 }
 
 function Overview({
@@ -1057,7 +1057,7 @@ function ConnectorModal({
 
         <div className="connector-steps">
           <div><strong>1</strong><span>Export or paste data from {connector.name}</span></div>
-          <div><strong>2</strong><span>FulfillGuard stores it as source evidence</span></div>
+          <div><strong>2</strong><span>Catalyst AI stores it as source evidence</span></div>
           <div><strong>3</strong><span>The agent analyzes evidence and creates a case</span></div>
         </div>
 

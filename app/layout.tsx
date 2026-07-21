@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "FulfillGuard | Adaptive operations",
+  title: "Catalyst AI | Adaptive operations",
   description: "AI operations software that builds, runs, and maintains fulfillment workflows.",
   icons: {
     icon: "/favicon.svg",

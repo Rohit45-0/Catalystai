@@ -2,7 +2,7 @@
 
 ## Project
 
-**Name:** FulfillGuard<br>
+**Name:** Catalyst AI<br>
 **Track:** Work and Productivity<br>
 **Tagline:** An adaptive operations engineer for ecommerce teams, with evidence-backed actions and human approval.
 
@@ -10,7 +10,7 @@
 
 Fulfillment teams rarely have one clean system. Orders live in Shopify, warehouse context appears in Slack, invoices arrive by email, and the operating policy is often trapped in documents or someone's memory. By the time those signals are connected manually, a customer promise or a billing deadline may already be missed.
 
-I built FulfillGuard to turn those scattered signals into governed operational action. It connects evidence from order systems and conversations, ranks exceptions by business impact, explains its reasoning, and drafts the next action. External writes remain behind explicit human approval.
+I built Catalyst AI to turn those scattered signals into governed operational action. It connects evidence from order systems and conversations, ranks exceptions by business impact, explains its reasoning, and drafts the next action. External writes remain behind explicit human approval.
 
 The proof of concept also shows what happens after the first workflow is deployed. A maintainer agent compares real operator behavior with the current policy, detects drift, proposes a versioned rule change, reruns historical checks, and asks for approval before deployment. A complete audit log preserves evidence reads, tool calls, model decisions, approvals, and workflow versions.
 
@@ -20,15 +20,15 @@ Codex implemented and debugged the product, backend tools, tests, and Remotion d
 
 ## What was built during Build Week
 
-Generic starter infrastructure and open-source packages pre-existed. During Build Week, the FulfillGuard product experience, API routes, Shopify and Slack tools, deterministic fallback path, multi-agent builder, maintainer workflow, tests, documentation, and submission video were created or meaningfully extended.
+Generic starter infrastructure and open-source packages pre-existed. During Build Week, the Catalyst AI product experience, API routes, Shopify and Slack tools, deterministic fallback path, multi-agent builder, maintainer workflow, tests, documentation, and submission video were created or meaningfully extended.
 
 ## Suggested YouTube metadata
 
-**Title:** FulfillGuard - Adaptive Ecommerce Operations | OpenAI Build Week
+**Title:** Catalyst AI - Adaptive Ecommerce Operations | OpenAI Build Week
 
 **Description:**
 
-FulfillGuard connects ecommerce order state, warehouse conversations, and business evidence to detect exceptions, explain risk, and propose governed actions. This working Build Week proof of concept includes Shopify and Slack agent tools, a four-agent application builder, human approval gates, policy-drift maintenance, versioned changes, historical tests, and an audit trail. Built with Codex and GPT-5.6 Terra.
+Catalyst AI connects ecommerce order state, warehouse conversations, and business evidence to detect exceptions, explain risk, and propose governed actions. This working Build Week proof of concept includes Shopify and Slack agent tools, a four-agent application builder, human approval gates, policy-drift maintenance, versioned changes, historical tests, and an audit trail. Built with Codex and GPT-5.6 Terra.
 
 ## External submission fields
 

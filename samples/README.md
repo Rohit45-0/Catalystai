@@ -1,4 +1,4 @@
-# FulfillGuard sample evidence
+# Catalyst AI sample evidence
 
 These files exercise the credential-free evidence ingestion path.
 

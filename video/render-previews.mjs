@@ -34,10 +34,10 @@ const serveUrl = await bundle({
 });
 
 const compositions = await getCompositions(serveUrl, { logLevel: "warn" });
-const composition = compositions.find((item) => item.id === "FulfillGuardDemo");
+const composition = compositions.find((item) => item.id === "CatalystAIDemo");
 
 if (!composition) {
-  throw new Error("FulfillGuardDemo composition was not found");
+  throw new Error("CatalystAIDemo composition was not found");
 }
 
 for (const [name, frame] of frames) {
