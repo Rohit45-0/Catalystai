@@ -1,9 +1,9 @@
-# Catalyst AI sample evidence
+# Neural Knights demo workspace
 
-These files exercise the credential-free evidence ingestion path.
+These small, synthetic files demonstrate the MVP workflow without exposing customer data.
 
-- `shopify-priority-order.json`: a paid priority order approaching its dispatch SLA.
-- `slack-warehouse-blocker.json`: warehouse context identifying the blocked SKU and location.
-- `gmail-invoice-thread.txt`: a short billing conversation for the Gmail connector modal.
+1. `complaints-q2.csv` represents an operational complaint queue.
+2. `complaint-response-policy.md` defines review and approval rules.
+3. `operations-handoff.txt` describes how the team currently coordinates work.
 
-POST either JSON file to `http://localhost:3006/api/evidence`, then use **Connections -> Sync webhook -> Analyze evidence**.
+The same records are available from the product's **Load demo workspace** action.

@@ -1,0 +1,3 @@
+The support team tracks urgent complaints in a spreadsheet and copies them into chat for compliance review.
+Reviews are often delayed because Payments Operations cannot see the original complaint.
+Three transfer complaints breached the internal 24-hour review target last month.

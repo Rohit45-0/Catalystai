@@ -1,0 +1,5 @@
+id,product,issue,days_open,consumer_risk,status
+CP-1842,International transfer,Funds not received,4,high,open
+CP-1839,Digital wallet,Account locked,2,medium,open
+CP-1827,International transfer,Incorrect exchange rate,7,high,open
+CP-1818,Payment card,Duplicate charge,1,low,open

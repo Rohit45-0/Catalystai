@@ -2,93 +2,85 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-test("exposes the interactive Catalyst AI command center", async () => {
-  const [page, css, packageJson] = await Promise.all([
+test("exposes the Neural Knights discovery-to-deployment experience", async () => {
+  const [page, app, css, metadata] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/components/neural-knights-app.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
-    readFile(new URL("../package.json", import.meta.url), "utf8"),
+    readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
   ]);
 
-  assert.match(page, /"use client"/);
-  assert.match(page, /Operations command center/);
-  assert.match(page, /New workflow/);
-  assert.match(page, /Analyze conversation/);
-  assert.match(page, /Analyze evidence/);
-  assert.match(page, /Run Shopify \+ Slack agent/);
-  assert.match(page, /Approve Slack escalation/);
-  assert.match(page, /api\/evidence/);
-  assert.match(page, /api\/agent\/fulfillment-risk/);
-  assert.match(page, /openConnector/);
-  assert.match(page, /approveCase/);
-  assert.match(page, /setWorkflowDialog\(true\)/);
-  assert.match(packageJson, /"dev":\s*"next dev"/);
-  assert.doesNotMatch(packageJson, /"dev":\s*"vinext dev"/);
-  assert.match(css, /@media \(max-width: 700px\)/);
+  assert.match(page, /NeuralKnightsApp/);
+  assert.match(app, /"use client"/);
+  assert.match(app, /Turn company knowledge into a working internal app/);
+  assert.match(app, /Load demo workspace/);
+  assert.match(app, /Discover applications/);
+  assert.match(app, /Company execution map/);
+  assert.match(app, /Approve and queue escalation/);
+  assert.match(app, /api\/discover/);
+  assert.match(app, /api\/apps\/generate/);
+  assert.match(metadata, /Neural Knights/);
+  assert.match(css, /@media \(max-width: 600px\)/);
   assert.match(css, /prefers-reduced-motion/);
 });
 
-test("stores connector evidence for webhook-style imports", async () => {
-  const route = await import("../app/api/evidence/route.ts");
-  const response = await route.POST(
-    new Request("http://localhost/api/evidence", {
+test("builds a deterministic execution map with source provenance", async () => {
+  const { demoSources, discoverWorkspace } = await import("../app/lib/neural-knights.ts");
+  const result = discoverWorkspace({
+    workspace: "Northstar Payments",
+    goal: "Reduce complaint delays",
+    sources: demoSources,
+  });
+
+  assert.equal(result.workspace, "Northstar Payments");
+  assert.equal(result.sourceCount, 3);
+  assert.ok(result.graph.nodes.length >= 8);
+  assert.ok(result.graph.edges.length >= 6);
+  assert.ok(result.graph.edges.every((edge) => edge.evidenceIds.length > 0));
+  assert.ok(result.graph.edges.every((edge) => edge.confidence >= 0.9));
+  assert.equal(result.opportunities[0].id, "complaint-desk");
+  assert.equal(result.opportunities[0].recommended, true);
+});
+
+test("generates a constrained application specification", async () => {
+  const { generateAppSpec } = await import("../app/lib/neural-knights.ts");
+  const spec = generateAppSpec("complaint-desk");
+
+  assert.equal(spec.slug, "complaint-operations");
+  assert.equal(spec.evaluation.passed, spec.evaluation.total);
+  assert.ok(spec.views.includes("audit"));
+  assert.ok(spec.rules.some((rule) => rule.approvalRequired));
+  assert.deepEqual(spec.allowedActions, [
+    "draft_response",
+    "request_review",
+    "queue_escalation",
+  ]);
+});
+
+test("returns discovery and generated app API responses", async () => {
+  const discoveryRoute = await import("../app/api/discover/route.ts");
+  const generationRoute = await import("../app/api/apps/generate/route.ts");
+
+  const discoveryResponse = await discoveryRoute.POST(
+    new Request("http://localhost/api/discover", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        source: "Shopify",
-        connectorId: "shopify",
-        payload: { order_id: 5841, fulfillment_status: "unfulfilled" },
-      }),
+      body: JSON.stringify({ workspace: "Northstar Payments" }),
     }),
   );
+  assert.equal(discoveryResponse.status, 200);
+  const discovery = await discoveryResponse.json();
+  assert.equal(discovery.opportunities[0].id, "complaint-desk");
 
-  assert.equal(response.status, 200);
-  const result = await response.json();
-  assert.equal(result.ok, true);
-  assert.equal(result.event.source, "Shopify");
-
-  const list = await route.GET();
-  const body = await list.json();
-  assert.ok(body.events.some((event) => event.connectorId === "shopify"));
-});
-
-test("runs the Shopify and Slack tool chain with demo fallback", async () => {
-  const connectors = await import("../app/lib/real-connectors.ts");
-  const [orders, messages] = await Promise.all([
-    connectors.listUnfulfilledShopifyOrders(),
-    connectors.readSlackMessages(),
-  ]);
-  const result = connectors.buildFulfillmentCase(orders, messages);
-
-  assert.equal(connectors.connectorHealth().length, 2);
-  assert.ok(orders.length > 0);
-  assert.ok(messages.length > 0);
-  assert.match(result.title, /unfulfilled/i);
-  assert.match(result.draftSlackMessage, /Catalyst AI escalation/);
-});
-
-test("returns deterministic analysis when no API key is configured", async () => {
-  const previousKey = process.env.OPENAI_API_KEY;
-  delete process.env.OPENAI_API_KEY;
-
-  try {
-    const route = await import("../app/api/analyze/route.ts");
-    const response = await route.POST(
-      new Request("http://localhost/api/analyze", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          problem: "Check the invoice",
-          conversation: ["The rate changed", "There is no signed amendment"],
-        }),
-      }),
-    );
-
-    assert.equal(response.status, 200);
-    const result = await response.json();
-    assert.equal(result.mode, "demo");
-    assert.equal(result.caseId, "FG-1042");
-    assert.equal(result.category, "billing_compliance");
-  } finally {
-    if (previousKey) process.env.OPENAI_API_KEY = previousKey;
-  }
+  const generationResponse = await generationRoute.POST(
+    new Request("http://localhost/api/apps/generate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ blueprintId: "complaint-desk" }),
+    }),
+  );
+  assert.equal(generationResponse.status, 200);
+  const generation = await generationResponse.json();
+  assert.equal(generation.deployment.status, "ready");
+  assert.equal(generation.appSpec.slug, "complaint-operations");
 });
