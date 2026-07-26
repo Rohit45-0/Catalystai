@@ -12,11 +12,13 @@ test("exposes the Neural Knights discovery-to-deployment experience", async () =
 
   assert.match(page, /NeuralKnightsApp/);
   assert.match(app, /"use client"/);
-  assert.match(app, /Turn company knowledge into a working internal app/);
-  assert.match(app, /Load demo workspace/);
-  assert.match(app, /Discover applications/);
+  assert.match(app, /Build the missing tool from how your company actually operates/);
+  assert.match(app, /Try the Northstar demo/);
+  assert.match(app, /Discover what to build/);
   assert.match(app, /Company execution map/);
-  assert.match(app, /Approve and queue escalation/);
+  assert.match(app, /Approve and queue/);
+  assert.match(app, /Run checks again/);
+  assert.match(app, /Export JSON/);
   assert.match(app, /api\/discover/);
   assert.match(app, /api\/apps\/generate/);
   assert.match(metadata, /Neural Knights/);
@@ -60,27 +62,92 @@ test("generates a constrained application specification", async () => {
 test("returns discovery and generated app API responses", async () => {
   const discoveryRoute = await import("../app/api/discover/route.ts");
   const generationRoute = await import("../app/api/apps/generate/route.ts");
+  const { demoSources } = await import("../app/lib/neural-knights.ts");
+  const previousKey = process.env.OPENAI_API_KEY;
+  delete process.env.OPENAI_API_KEY;
 
-  const discoveryResponse = await discoveryRoute.POST(
-    new Request("http://localhost/api/discover", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ workspace: "Northstar Payments" }),
-    }),
-  );
-  assert.equal(discoveryResponse.status, 200);
-  const discovery = await discoveryResponse.json();
-  assert.equal(discovery.opportunities[0].id, "complaint-desk");
+  try {
+    const discoveryResponse = await discoveryRoute.POST(
+      new Request("http://localhost/api/discover", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          workspace: "Northstar Payments",
+          goal: "Reduce complaint review delays",
+          sources: demoSources,
+        }),
+      }),
+    );
+    assert.equal(discoveryResponse.status, 200);
+    const discovery = await discoveryResponse.json();
+    assert.equal(discovery.opportunities[0].id, "complaint-desk");
+    assert.equal(discovery.runtime.mode, "deterministic-demo");
 
-  const generationResponse = await generationRoute.POST(
-    new Request("http://localhost/api/apps/generate", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ blueprintId: "complaint-desk" }),
-    }),
-  );
-  assert.equal(generationResponse.status, 200);
-  const generation = await generationResponse.json();
-  assert.equal(generation.deployment.status, "ready");
-  assert.equal(generation.appSpec.slug, "complaint-operations");
+    const generationResponse = await generationRoute.POST(
+      new Request("http://localhost/api/apps/generate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ blueprintId: "complaint-desk" }),
+      }),
+    );
+    assert.equal(generationResponse.status, 200);
+    const generation = await generationResponse.json();
+    assert.equal(generation.deployment.status, "ready");
+    assert.equal(generation.appSpec.slug, "complaint-operations");
+  } finally {
+    if (previousKey) process.env.OPENAI_API_KEY = previousKey;
+  }
+});
+
+test("uses a validated structured model response when OpenAI is configured", async () => {
+  const discoveryRoute = await import("../app/api/discover/route.ts");
+  const { demoSources, discoverWorkspace } = await import("../app/lib/neural-knights.ts");
+  const previousKey = process.env.OPENAI_API_KEY;
+  const previousModel = process.env.OPENAI_MODEL;
+  const previousFetch = globalThis.fetch;
+  const fixture = discoverWorkspace({
+    workspace: "Northstar Payments",
+    goal: "Reduce complaint delays",
+    sources: demoSources,
+  });
+
+  process.env.OPENAI_API_KEY = "test-key";
+  process.env.OPENAI_MODEL = "gpt-test";
+  globalThis.fetch = async () =>
+    new Response(
+      JSON.stringify({
+        output_text: JSON.stringify({
+          summary: "The uploaded evidence shows a manual review handoff that delays high-risk complaint decisions.",
+          graph: fixture.graph,
+          opportunities: fixture.opportunities,
+          blueprints: fixture.blueprints,
+        }),
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+
+  try {
+    const response = await discoveryRoute.POST(
+      new Request("http://localhost/api/discover", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          workspace: "Northstar Payments",
+          goal: "Reduce complaint delays",
+          sources: demoSources,
+        }),
+      }),
+    );
+    const result = await response.json();
+    assert.equal(result.runtime.mode, "live");
+    assert.equal(result.runtime.model, "gpt-test");
+    assert.equal(result.graph.nodes.length, fixture.graph.nodes.length);
+    assert.ok(result.graph.edges.every((edge) => edge.evidenceIds.length > 0));
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey) process.env.OPENAI_API_KEY = previousKey;
+    else delete process.env.OPENAI_API_KEY;
+    if (previousModel) process.env.OPENAI_MODEL = previousModel;
+    else delete process.env.OPENAI_MODEL;
+  }
 });

@@ -13,6 +13,7 @@ import {
   CircleDot,
   Clock3,
   Database,
+  Download,
   FileJson,
   FileText,
   GitBranch,
@@ -23,9 +24,11 @@ import {
   LockKeyhole,
   Menu,
   Network,
+  RefreshCcw,
   Rocket,
   Search,
   ShieldCheck,
+  SlidersHorizontal,
   Sparkles,
   Upload,
   Users,
@@ -33,7 +36,7 @@ import {
   X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   demoSources,
   discoverWorkspace,
@@ -47,7 +50,7 @@ import {
 
 type View = "discover" | "map" | "apps" | "audit";
 type AppTab = "queue" | "evaluations" | "rules";
-type ComplaintStatus = "open" | "approved";
+type ComplaintStatus = "open" | "approved" | "dismissed";
 
 type Complaint = {
   id: string;
@@ -136,6 +139,13 @@ const navItems: Array<{ id: View; label: string; icon: typeof Sparkles }> = [
   { id: "audit", label: "Audit log", icon: ListChecks },
 ];
 
+const discoveryStages = [
+  "Reading source structure",
+  "Linking people, policies, and systems",
+  "Testing bottleneck hypotheses",
+  "Ranking application opportunities",
+];
+
 function kindFromName(name: string): SourceDocument["kind"] {
   const extension = name.split(".").pop()?.toLowerCase();
   if (extension === "csv") return "csv";
@@ -167,10 +177,14 @@ export function NeuralKnightsApp({ initialMode = "builder" }: { initialMode?: "b
   const [selectedOpportunity, setSelectedOpportunity] = useState("complaint-desk");
   const [appSpec, setAppSpec] = useState<AppSpec | null>(seeded ? generateAppSpec("complaint-desk") : null);
   const [isDiscovering, setIsDiscovering] = useState(false);
+  const [discoveryStage, setDiscoveryStage] = useState(0);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isEvaluating, setIsEvaluating] = useState(false);
   const [appTab, setAppTab] = useState<AppTab>("queue");
   const [caseList, setCaseList] = useState(complaints);
   const [selectedCaseId, setSelectedCaseId] = useState(complaints[0].id);
+  const [caseQuery, setCaseQuery] = useState("");
+  const [showResolved, setShowResolved] = useState(false);
   const [audit, setAudit] = useState([
     "App v1 passed 12 historical evaluations",
     "Complaint response policy linked to three workflow rules",
@@ -180,11 +194,41 @@ export function NeuralKnightsApp({ initialMode = "builder" }: { initialMode?: "b
 
   const selectedCase = caseList.find((item) => item.id === selectedCaseId) ?? caseList[0];
   const openCount = caseList.filter((item) => item.status === "open").length;
+  const visibleCases = useMemo(
+    () =>
+      caseList.filter((item) => {
+        const matchesQuery = `${item.id} ${item.title} ${item.product}`.toLowerCase().includes(caseQuery.toLowerCase());
+        return matchesQuery && (showResolved || item.status === "open");
+      }),
+    [caseList, caseQuery, showResolved],
+  );
 
   const sourceCharacters = useMemo(
     () => sources.reduce((total, source) => total + source.content.length, 0),
     [sources],
   );
+
+  useEffect(() => {
+    if (!seeded) return;
+    const saved = window.localStorage.getItem("neural-knights-app-spec");
+    if (!saved) return;
+    try {
+      const parsed = JSON.parse(saved) as AppSpec;
+      const timeout = window.setTimeout(() => setAppSpec(parsed), 0);
+      return () => window.clearTimeout(timeout);
+    } catch {
+      window.localStorage.removeItem("neural-knights-app-spec");
+    }
+  }, [seeded]);
+
+  useEffect(() => {
+    if (!isDiscovering) return;
+    const interval = window.setInterval(
+      () => setDiscoveryStage((current) => Math.min(current + 1, discoveryStages.length - 1)),
+      1150,
+    );
+    return () => window.clearInterval(interval);
+  }, [isDiscovering]);
 
   function navigate(view: View) {
     if (view === "discover" && seeded) {
@@ -221,6 +265,7 @@ export function NeuralKnightsApp({ initialMode = "builder" }: { initialMode?: "b
       setToast("Add a problem statement and at least one source");
       return;
     }
+    setDiscoveryStage(0);
     setIsDiscovering(true);
     try {
       const response = await fetch("/api/discover", {
@@ -234,6 +279,11 @@ export function NeuralKnightsApp({ initialMode = "builder" }: { initialMode?: "b
       setSelectedOpportunity(result.opportunities.find((item) => item.recommended)?.id ?? result.opportunities[0].id);
       setActiveView("map");
       setAudit((items) => [`Execution map created from ${result.sourceCount} sources`, ...items]);
+      setToast(
+        result.runtime?.mode === "live"
+          ? `Live analysis completed with ${result.runtime.model}`
+          : "Execution map created with the safe demo engine",
+      );
     } catch {
       setToast("Discovery could not finish. Please try again.");
     } finally {
@@ -246,10 +296,16 @@ export function NeuralKnightsApp({ initialMode = "builder" }: { initialMode?: "b
     setSelectedOpportunity(blueprintId);
     setIsGenerating(true);
     try {
+      const blueprint = discovery?.blueprints.find((item) => item.id === blueprintId);
       const response = await fetch("/api/apps/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ blueprintId }),
+        body: JSON.stringify({
+          blueprintId,
+          blueprint,
+          workspace: discovery?.workspace,
+          discoverySummary: discovery?.summary,
+        }),
       });
       if (!response.ok) throw new Error("Generation failed");
       const result = (await response.json()) as { appSpec: AppSpec };
@@ -261,6 +317,11 @@ export function NeuralKnightsApp({ initialMode = "builder" }: { initialMode?: "b
     } finally {
       setIsGenerating(false);
     }
+  }
+
+  function chooseOpportunity(id: string) {
+    setSelectedOpportunity(id);
+    setAppSpec(null);
   }
 
   function deployApplication() {
@@ -277,6 +338,38 @@ export function NeuralKnightsApp({ initialMode = "builder" }: { initialMode?: "b
     );
     setAudit((items) => [`Human approved the governed escalation for ${id}`, ...items]);
     setToast(`${id} approved and queued`);
+  }
+
+  function dismissCase(id: string) {
+    const item = caseList.find((complaint) => complaint.id === id);
+    if (!item || item.status !== "open") return;
+    setCaseList((current) =>
+      current.map((complaint) => (complaint.id === id ? { ...complaint, status: "dismissed" } : complaint)),
+    );
+    setAudit((items) => [`Human dismissed the proposed escalation for ${id}`, ...items]);
+    setToast(`${id} dismissed with an audit record`);
+  }
+
+  function runEvaluations() {
+    if (isEvaluating) return;
+    setIsEvaluating(true);
+    window.setTimeout(() => {
+      setIsEvaluating(false);
+      setAudit((items) => [`App v${appSpec?.version ?? 1} passed 12 historical evaluations`, ...items]);
+      setToast("All historical checks passed");
+    }, 1200);
+  }
+
+  function exportAudit() {
+    const blob = new Blob([JSON.stringify({ workspace, events: audit }, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "neural-knights-audit.json";
+    anchor.click();
+    URL.revokeObjectURL(url);
   }
 
   return (
@@ -334,10 +427,10 @@ export function NeuralKnightsApp({ initialMode = "builder" }: { initialMode?: "b
           </button>
           <div className="topbar-title">
             <span>{navItems.find((item) => item.id === activeView)?.label}</span>
-            <small><i /> Workspace live</small>
+            <small><i /> {discovery?.runtime?.mode === "live" ? `Live model / ${discovery.runtime.model}` : "Workspace ready"}</small>
           </div>
           <div className="topbar-actions">
-            <span className="privacy-label"><LockKeyhole size={14} /> Sources stay private</span>
+            <span className="privacy-label"><ShieldCheck size={14} /> Evidence access logged</span>
             {appSpec && activeView !== "apps" ? (
               <button className="secondary-button" onClick={() => setActiveView("apps")}>
                 <LayoutDashboard size={15} /> Open generated app
@@ -347,6 +440,12 @@ export function NeuralKnightsApp({ initialMode = "builder" }: { initialMode?: "b
         </header>
 
         <main className="nk-content">
+          <JourneyProgress
+            activeView={activeView}
+            hasDiscovery={Boolean(discovery)}
+            hasApp={Boolean(appSpec)}
+            navigate={navigate}
+          />
           {activeView === "discover" ? (
             <DiscoverView
               workspace={workspace}
@@ -354,6 +453,7 @@ export function NeuralKnightsApp({ initialMode = "builder" }: { initialMode?: "b
               sources={sources}
               sourceCharacters={sourceCharacters}
               loading={isDiscovering}
+              discoveryStage={discoveryStage}
               setWorkspace={setWorkspace}
               setGoal={setGoal}
               loadDemo={loadDemoWorkspace}
@@ -368,7 +468,7 @@ export function NeuralKnightsApp({ initialMode = "builder" }: { initialMode?: "b
             <MapView
               discovery={discovery}
               selectedOpportunity={selectedOpportunity}
-              selectOpportunity={setSelectedOpportunity}
+              selectOpportunity={chooseOpportunity}
               generateApplication={generateApplication}
               isGenerating={isGenerating}
               appSpec={appSpec}
@@ -381,18 +481,25 @@ export function NeuralKnightsApp({ initialMode = "builder" }: { initialMode?: "b
               appSpec={appSpec}
               appTab={appTab}
               setAppTab={setAppTab}
-              cases={caseList}
+              cases={visibleCases}
               selectedCase={selectedCase}
               selectCase={setSelectedCaseId}
               approveCase={approveCase}
+              dismissCase={dismissCase}
               openCount={openCount}
               audit={audit}
+              query={caseQuery}
+              setQuery={setCaseQuery}
+              showResolved={showResolved}
+              setShowResolved={setShowResolved}
+              isEvaluating={isEvaluating}
+              runEvaluations={runEvaluations}
               deployed={seeded}
               deployApplication={deployApplication}
             />
           ) : null}
 
-          {activeView === "audit" ? <AuditView items={audit} /> : null}
+          {activeView === "audit" ? <AuditView items={audit} exportAudit={exportAudit} /> : null}
         </main>
       </div>
 
@@ -406,12 +513,48 @@ export function NeuralKnightsApp({ initialMode = "builder" }: { initialMode?: "b
   );
 }
 
+function JourneyProgress({
+  activeView,
+  hasDiscovery,
+  hasApp,
+  navigate,
+}: {
+  activeView: View;
+  hasDiscovery: boolean;
+  hasApp: boolean;
+  navigate: (view: View) => void;
+}) {
+  const steps: Array<{ view: View; number: string; label: string; detail: string; enabled: boolean }> = [
+    { view: "discover", number: "01", label: "Add context", detail: "Problem and evidence", enabled: true },
+    { view: "map", number: "02", label: "Find the gap", detail: "Map and opportunities", enabled: hasDiscovery },
+    { view: "apps", number: "03", label: "Run the app", detail: "Test and approve", enabled: hasApp },
+  ];
+  const activeIndex = activeView === "discover" ? 0 : activeView === "map" ? 1 : 2;
+
+  return (
+    <div className="journey-progress" aria-label="Build progress">
+      {steps.map((step, index) => (
+        <button
+          key={step.view}
+          className={`${index === activeIndex ? "journey-active" : ""} ${index < activeIndex ? "journey-complete" : ""}`}
+          disabled={!step.enabled}
+          onClick={() => navigate(step.view)}
+        >
+          <span>{index < activeIndex ? <Check size={13} /> : step.number}</span>
+          <div><strong>{step.label}</strong><small>{step.detail}</small></div>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function DiscoverView({
   workspace,
   goal,
   sources,
   sourceCharacters,
   loading,
+  discoveryStage,
   setWorkspace,
   setGoal,
   loadDemo,
@@ -425,6 +568,7 @@ function DiscoverView({
   sources: SourceDocument[];
   sourceCharacters: number;
   loading: boolean;
+  discoveryStage: number;
   setWorkspace: (value: string) => void;
   setGoal: (value: string) => void;
   loadDemo: () => void;
@@ -437,12 +581,12 @@ function DiscoverView({
     <>
       <div className="product-heading">
         <div>
-          <span className="eyebrow">Discover what to build</span>
-          <h1>Turn company knowledge into a working internal app.</h1>
-          <p>Describe an operational problem and add the sources that show how the work actually happens.</p>
+          <span className="eyebrow">Start with the work, not a blank canvas</span>
+          <h1>Build the missing tool from how your company actually operates.</h1>
+          <p>Give Neural Knights a problem and the evidence around it. You get a source-backed map, three useful app options, and a safe working application.</p>
         </div>
         <button className="secondary-button" onClick={loadDemo}>
-          <Sparkles size={15} /> Load demo workspace
+          <Sparkles size={15} /> Try the Northstar demo
         </button>
       </div>
 
@@ -511,19 +655,51 @@ function DiscoverView({
           </div>
         </section>
 
-        <aside className="build-preview">
+        <aside className="intelligence-preview surface">
           <div className="preview-top">
             <span className="preview-mark"><BrainCircuit size={20} /></span>
-            <div><span className="eyebrow">Neural Knights will</span><h2>Map, diagnose, and build</h2></div>
+            <div><span className="eyebrow">Workspace signal</span><h2>{loading ? "Understanding the operation" : "Ready to discover"}</h2></div>
+            <span className="live-model-pill"><i /> {loading ? "Working" : "Live AI"}</span>
           </div>
-          <div className="preview-steps">
-            <div><Network size={16} /><span><strong>Build an execution map</strong><small>People, policies, systems, decisions</small></span></div>
-            <div><Search size={16} /><span><strong>Find operational bottlenecks</strong><small>Ranked with source evidence</small></span></div>
-            <div><LayoutDashboard size={16} /><span><strong>Generate three app designs</strong><small>With rules, approvals, and tests</small></span></div>
+
+          <div className="signal-canvas">
+            <div className="signal-inputs">
+              <span className={goal.trim() ? "signal-ready" : ""}><FileText size={14} /> Problem brief <Check size={12} /></span>
+              <span className={sources.length ? "signal-ready" : ""}><Database size={14} /> {sources.length || 0} sources <Check size={12} /></span>
+              <span className={sourceCharacters > 500 ? "signal-ready" : ""}><Link2 size={14} /> Evidence depth <Check size={12} /></span>
+            </div>
+            <div className="signal-flow">
+              <span /><i /><span /><i /><span />
+            </div>
+            <div className="signal-output">
+              <Network size={17} />
+              <div><strong>Execution map</strong><small>Grounded in your sources</small></div>
+              <ArrowRight size={14} />
+              <LayoutDashboard size={17} />
+            </div>
           </div>
-          <div className="safety-note"><ShieldCheck size={16} /><span>Generated apps use a constrained runtime. No arbitrary code is executed.</span></div>
+
+          {loading ? (
+            <div className="discovery-progress" aria-live="polite">
+              <div className="progress-track"><span style={{ width: `${((discoveryStage + 1) / discoveryStages.length) * 100}%` }} /></div>
+              {discoveryStages.map((stage, index) => (
+                <div className={index <= discoveryStage ? "stage-active" : ""} key={stage}>
+                  <span>{index < discoveryStage ? <Check size={11} /> : index === discoveryStage ? <LoaderCircle className="spin" size={11} /> : index + 1}</span>
+                  {stage}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="preview-outcomes">
+              <div><strong>3</strong><span>ranked app options</span></div>
+              <div><strong>1</strong><span>governed runtime</span></div>
+              <div><strong>0</strong><span>arbitrary code paths</span></div>
+            </div>
+          )}
+
+          <div className="safety-note"><ShieldCheck size={16} /><span>Source content is treated as evidence, never as instructions. External actions remain approval-gated.</span></div>
           <button className="primary-button discover-button" onClick={runDiscovery} disabled={loading}>
-            {loading ? <><LoaderCircle className="spin" size={16} /> Mapping your operation</> : <><Sparkles size={16} /> Discover applications <ArrowRight size={16} /></>}
+            {loading ? <><LoaderCircle className="spin" size={16} /> {discoveryStages[discoveryStage]}</> : <><Sparkles size={16} /> Discover what to build <ArrowRight size={16} /></>}
           </button>
         </aside>
       </div>
@@ -549,13 +725,39 @@ function MapView({
   deployApplication: () => void;
 }) {
   const selected = discovery.blueprints.find((item) => item.id === selectedOpportunity);
+  const initialNode = discovery.graph.nodes.find((node) => node.type === "problem") ?? discovery.graph.nodes[0];
+  const [selectedNodeId, setSelectedNodeId] = useState(initialNode?.id ?? "");
+  const selectedNode = discovery.graph.nodes.find((node) => node.id === selectedNodeId) ?? initialNode;
+  const connections = discovery.graph.edges.filter(
+    (edge) => edge.source === selectedNode?.id || edge.target === selectedNode?.id,
+  );
+  const averageConfidence = Math.round(
+    (discovery.graph.edges.reduce((total, edge) => total + edge.confidence, 0) /
+      Math.max(1, discovery.graph.edges.length)) *
+      100,
+  );
+  const primaryOpportunity = discovery.opportunities.find((item) => item.recommended) ?? discovery.opportunities[0];
 
   return (
     <>
       <div className="page-heading">
         <div><span className="eyebrow">Company execution map</span><h1>{discovery.workspace}</h1><p>{discovery.summary}</p></div>
-        <span className="evidence-badge"><BadgeCheck size={15} /> {discovery.sourceCount} sources mapped</span>
+        <div className="map-heading-badges">
+          {discovery.runtime ? (
+            <span className={`runtime-badge runtime-${discovery.runtime.mode}`}>
+              <i /> {discovery.runtime.mode === "live" ? `${discovery.runtime.model} / ${discovery.runtime.latencyMs} ms` : "Safe fallback"}
+            </span>
+          ) : null}
+          <span className="evidence-badge"><BadgeCheck size={15} /> {discovery.sourceCount} sources mapped</span>
+        </div>
       </div>
+
+      {discovery.runtime?.fallbackReason ? (
+        <div className="runtime-notice" role="status">
+          <AlertTriangle size={15} />
+          <span><strong>Deterministic fallback active.</strong> {discovery.runtime.fallbackReason}</span>
+        </div>
+      ) : null}
 
       <div className="metric-strip">
         <Metric value={`${discovery.graph.nodes.length}`} label="entities mapped" icon={Network} />
@@ -566,15 +768,19 @@ function MapView({
 
       <div className="map-layout">
         <section className="surface graph-surface">
-          <div className="panel-heading"><div><h2>How work happens today</h2><p>Every relationship is tied to uploaded evidence.</p></div><span className="confidence-key"><i /> confidence 91%+</span></div>
+          <div className="panel-heading"><div><h2>How work happens today</h2><p>Select any entity to inspect the evidence behind it.</p></div><span className="confidence-key"><i /> {averageConfidence}% avg. confidence</span></div>
           <div className="graph-board">
             {discovery.graph.nodes.map((node) => {
               const Icon = nodeIcons[node.type];
               return (
-                <article className={`graph-node node-${node.type}`} key={node.id}>
+                <button
+                  className={`graph-node node-${node.type} ${selectedNode?.id === node.id ? "graph-node-active" : ""}`}
+                  key={node.id}
+                  onClick={() => setSelectedNodeId(node.id)}
+                >
                   <span><Icon size={15} /></span>
                   <div><small>{node.type}</small><strong>{node.label}</strong><p>{node.detail}</p></div>
-                </article>
+                </button>
               );
             })}
           </div>
@@ -593,14 +799,20 @@ function MapView({
         </section>
 
         <aside className="surface diagnosis-surface">
-          <div className="panel-heading"><div><h2>Primary diagnosis</h2><p>Highest evidence-backed operational risk</p></div><AlertTriangle size={18} /></div>
-          <span className="diagnosis-label">Manual handoff bottleneck</span>
-          <h3>High-risk complaints lose context before compliance review.</h3>
-          <p>Support copies spreadsheet records into chat, while Payments Operations cannot see the original complaint. This contributes to review-target breaches.</p>
+          <div className="panel-heading"><div><h2>Evidence inspector</h2><p>Why this entity exists in the map</p></div><FileText size={18} /></div>
+          <span className="diagnosis-label">{selectedNode?.type || "entity"}</span>
+          <h3>{selectedNode?.label}</h3>
+          <p>{selectedNode?.detail}</p>
           <div className="diagnosis-evidence">
-            <span><Check size={14} /> 2 high-risk cases currently beyond policy</span>
-            <span><Check size={14} /> 3 target breaches reported last month</span>
-            <span><Check size={14} /> Human approval required for financial promises</span>
+            {(selectedNode?.evidenceIds ?? []).map((evidenceId) => (
+              <span key={evidenceId}><FileText size={14} /> Source: {evidenceId}</span>
+            ))}
+            <span><Link2 size={14} /> {connections.length} mapped relationship{connections.length === 1 ? "" : "s"}</span>
+          </div>
+          <div className="primary-opportunity-note">
+            <span><Sparkles size={13} /> Strongest opportunity</span>
+            <strong>{primaryOpportunity?.title}</strong>
+            <p>{primaryOpportunity?.evidence}</p>
           </div>
         </aside>
       </div>
@@ -660,8 +872,15 @@ function GeneratedAppView({
   selectedCase,
   selectCase,
   approveCase,
+  dismissCase,
   openCount,
   audit,
+  query,
+  setQuery,
+  showResolved,
+  setShowResolved,
+  isEvaluating,
+  runEvaluations,
   deployed,
   deployApplication,
 }: {
@@ -672,11 +891,20 @@ function GeneratedAppView({
   selectedCase: Complaint;
   selectCase: (id: string) => void;
   approveCase: (id: string) => void;
+  dismissCase: (id: string) => void;
   openCount: number;
   audit: string[];
+  query: string;
+  setQuery: (value: string) => void;
+  showResolved: boolean;
+  setShowResolved: (value: boolean) => void;
+  isEvaluating: boolean;
+  runEvaluations: () => void;
   deployed: boolean;
   deployApplication: () => void;
 }) {
+  const displayedCase = cases.find((item) => item.id === selectedCase.id) ?? cases[0];
+
   return (
     <>
       <div className="app-heading">
@@ -706,29 +934,44 @@ function GeneratedAppView({
           </div>
           <div className="case-layout">
             <section className="surface case-browser">
-              <div className="case-tools"><div><Search size={15} /><span>Search complaints</span></div><button className="secondary-button"><AlertTriangle size={14} /> Open</button></div>
+              <div className="case-tools">
+                <label><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search complaints" /></label>
+                <button
+                  className={`secondary-button ${showResolved ? "filter-active" : ""}`}
+                  onClick={() => setShowResolved(!showResolved)}
+                >
+                  <SlidersHorizontal size={14} /> {showResolved ? "All cases" : "Open only"}
+                </button>
+              </div>
               <div className="case-list">
-                {cases.map((item) => (
+                {cases.length ? cases.map((item) => (
                   <button
                     className={selectedCase.id === item.id ? "case-selected" : ""}
                     key={item.id}
                     onClick={() => selectCase(item.id)}
                   >
                     <span className={`severity-dot severity-${item.severity}`} />
-                    <div><span><strong>{item.title}</strong><small>{item.severity}</small></span><p>{item.summary}</p><em>{item.id} / {item.product}</em></div>
-                    <aside><strong>{item.deadline}</strong><small>{item.age} open</small><ChevronRight size={15} /></aside>
+                    <div><span><strong>{item.title}</strong><small className={`case-status-${item.status}`}>{item.status === "open" ? item.severity : item.status}</small></span><p>{item.summary}</p><em>{item.id} / {item.product}</em></div>
+                    <aside><strong>{item.status === "open" ? item.deadline : item.status}</strong><small>{item.age} open</small><ChevronRight size={15} /></aside>
                   </button>
-                ))}
+                )) : <div className="empty-case-list"><Search size={18} /><strong>No matching cases</strong><span>Clear the search or include resolved cases.</span></div>}
               </div>
             </section>
-            <CaseInspector item={selectedCase} approveCase={approveCase} />
+            {displayedCase ? <CaseInspector item={displayedCase} approveCase={approveCase} dismissCase={dismissCase} /> : (
+              <aside className="surface case-inspector empty-inspector"><CheckCircle2 size={24} /><strong>Queue is clear</strong><span>No cases match the current view.</span></aside>
+            )}
           </div>
         </>
       ) : null}
 
       {appTab === "evaluations" ? (
         <section className="surface evaluation-panel">
-          <div className="evaluation-score"><CheckCircle2 size={25} /><strong>{appSpec.evaluation.passed}/{appSpec.evaluation.total}</strong><span>historical scenarios passed</span></div>
+          <div className="evaluation-score">
+            {isEvaluating ? <LoaderCircle className="spin" size={25} /> : <CheckCircle2 size={25} />}
+            <strong>{isEvaluating ? "Running" : `${appSpec.evaluation.passed}/${appSpec.evaluation.total}`}</strong>
+            <span>{isEvaluating ? "replaying historical scenarios" : "historical scenarios passed"}</span>
+            <button className="secondary-button" onClick={runEvaluations} disabled={isEvaluating}><RefreshCcw size={14} /> Run checks again</button>
+          </div>
           <div className="evaluation-list">
             {["High-risk complaint requires compliance review", "Transfer failure routes to Payments Operations", "Financial commitment remains approval-gated", "Every decision includes source evidence"].map((item) => (
               <div key={item}><Check size={15} /><span><strong>{item}</strong><small>Expected and actual decisions matched</small></span><em>Passed</em></div>
@@ -767,7 +1010,15 @@ function GeneratedAppView({
   );
 }
 
-function CaseInspector({ item, approveCase }: { item: Complaint; approveCase: (id: string) => void }) {
+function CaseInspector({
+  item,
+  approveCase,
+  dismissCase,
+}: {
+  item: Complaint;
+  approveCase: (id: string) => void;
+  dismissCase: (id: string) => void;
+}) {
   return (
     <aside className="surface case-inspector">
       <div className="inspector-top"><div><span className="eyebrow">Evidence-backed case</span><h2>{item.id}</h2></div><span className="confidence-badge">96% confidence</span></div>
@@ -781,21 +1032,26 @@ function CaseInspector({ item, approveCase }: { item: Complaint; approveCase: (i
         <div className="proposed-action"><ShieldCheck size={17} /><strong>{item.action}</strong></div>
         <div className="draft-response"><span>Prepared escalation</span><p>{item.draft}</p></div>
       </section>
-      {item.status === "approved" ? (
-        <div className="approved-state"><CheckCircle2 size={16} /> Approved and queued by a human</div>
+      {item.status !== "open" ? (
+        <div className={`approved-state state-${item.status}`}>
+          <CheckCircle2 size={16} /> {item.status === "approved" ? "Approved and queued by a human" : "Dismissed by a human"}
+        </div>
       ) : (
-        <button className="primary-button inspector-approve" onClick={() => approveCase(item.id)}>
-          <Check size={16} /> Approve and queue escalation
-        </button>
+        <div className="inspector-actions">
+          <button className="secondary-button" onClick={() => dismissCase(item.id)}><X size={15} /> Dismiss</button>
+          <button className="primary-button inspector-approve" onClick={() => approveCase(item.id)}>
+            <Check size={16} /> Approve and queue
+          </button>
+        </div>
       )}
     </aside>
   );
 }
 
-function AuditView({ items }: { items: string[] }) {
+function AuditView({ items, exportAudit }: { items: string[]; exportAudit: () => void }) {
   return (
     <>
-      <div className="page-heading"><div><span className="eyebrow">Governance</span><h1>Audit log</h1><p>Evidence access, generated rules, evaluations, and human decisions.</p></div><button className="secondary-button"><FileText size={14} /> Export</button></div>
+      <div className="page-heading"><div><span className="eyebrow">Governance</span><h1>Audit log</h1><p>Evidence access, generated rules, evaluations, and human decisions.</p></div><button className="secondary-button" onClick={exportAudit}><Download size={14} /> Export JSON</button></div>
       <section className="surface audit-panel">
         {items.map((item, index) => (
           <article key={`${item}-${index}`}>

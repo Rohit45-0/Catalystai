@@ -16,7 +16,7 @@ The first complete workflow is complaint operations for a regulated fintech team
 6. Validate its rules against historical scenarios.
 7. Approve a governed escalation and inspect the audit history.
 
-No API key or external account is required. The included demo workspace is synthetic.
+No API key or external account is required for the deterministic demo. When an OpenAI API key is configured, discovery and application generation use live structured model output and fall back safely if the request fails. The included demo workspace is synthetic.
 
 ## Run locally
 
@@ -26,6 +26,15 @@ npm run dev
 ```
 
 Open `http://localhost:3000`.
+
+To exercise the live model path, create `.env.local`:
+
+```env
+OPENAI_API_KEY=your_key
+OPENAI_MODEL=gpt-5.6-terra
+```
+
+Keep the key local and never commit it.
 
 ## Verify
 
@@ -49,7 +58,8 @@ This runs ESLint, a production build, and functional tests covering the executio
 - Next.js 16, React 19, TypeScript
 - Vinext and Cloudflare-compatible Sites deployment
 - Next.js route handlers for discovery and application generation
-- Deterministic local intelligence for a reliable zero-cost demo
+- OpenAI Responses API with strict JSON schemas and validated outputs
+- Deterministic intelligence for a reliable zero-cost demo and safe fallback
 - Lucide icon system and responsive operational interface
 
 ## Demo data

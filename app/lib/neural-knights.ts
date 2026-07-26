@@ -63,6 +63,12 @@ export type DiscoveryResult = {
   opportunities: Opportunity[];
   blueprints: WorkflowBlueprint[];
   sourceCount: number;
+  runtime?: {
+    mode: "live" | "deterministic-demo" | "deterministic-fallback";
+    model: string | null;
+    latencyMs: number;
+    fallbackReason?: string;
+  };
 };
 
 export type AppRule = {
