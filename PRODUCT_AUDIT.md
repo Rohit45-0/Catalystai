@@ -6,6 +6,8 @@ The product now communicates a differentiated idea: use company evidence to deci
 
 The first version proved the story visually but behaved too much like a prepared demo. The current pass adds a live, source-dependent OpenAI discovery path, visible processing stages, evidence inspection, working queue controls, rerunnable evaluations, rejection/approval actions, and exportable audit history.
 
+Problem understanding now precedes generation. The user confirms a domain and subproblem before Neural Knights creates an execution map, and the deterministic fallback uses domain-specific playbooks rather than always returning the complaint demo.
+
 ## Highest-priority missing pieces
 
 ### 1. Real design partners
@@ -34,7 +36,7 @@ Human approvals are recorded, but they do not yet become future evaluations.
 
 ### 5. Generated runtime breadth
 
-The model can discover different applications and generate rules, but the current runtime renders one complaint-operations interface.
+The runtime now renders complaint operations and a model-training workbench, but other domains still need their own suitable operational views.
 
 **Next build:** add a small allowlisted component vocabulary for queue, record detail, approval inbox, monitor, intake form, and report. Keep arbitrary generated code out of the runtime.
 

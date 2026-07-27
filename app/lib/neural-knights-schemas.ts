@@ -1,6 +1,21 @@
 import { z } from "zod";
+import { problemTaxonomy } from "./problem-taxonomy.ts";
 
 const nodeTypes = ["team", "system", "policy", "process", "record", "decision", "problem"] as const;
+const domainIds = problemTaxonomy.map((domain) => domain.id) as [
+  (typeof problemTaxonomy)[number]["id"],
+  ...(typeof problemTaxonomy)[number]["id"][],
+];
+
+export const problemClassificationPayloadSchema = z.object({
+  domain: z.enum(domainIds),
+  useCase: z.string().min(2),
+  interpretation: z.string().min(20),
+  objective: z.string().min(5),
+  evidenceSignals: z.array(z.string().min(3)).min(1).max(5),
+  clarificationQuestions: z.array(z.string().min(5)).min(1).max(3),
+  confidence: z.number().min(0).max(1),
+});
 
 export const discoveryPayloadSchema = z.object({
   summary: z.string().min(20),
@@ -63,6 +78,29 @@ export const appSpecPayloadSchema = z.object({
 });
 
 const stringArray = { type: "array", items: { type: "string" } };
+
+export const problemClassificationJsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "domain",
+    "useCase",
+    "interpretation",
+    "objective",
+    "evidenceSignals",
+    "clarificationQuestions",
+    "confidence",
+  ],
+  properties: {
+    domain: { type: "string", enum: domainIds },
+    useCase: { type: "string" },
+    interpretation: { type: "string" },
+    objective: { type: "string" },
+    evidenceSignals: { type: "array", minItems: 1, maxItems: 5, items: { type: "string" } },
+    clarificationQuestions: { type: "array", minItems: 1, maxItems: 3, items: { type: "string" } },
+    confidence: { type: "number", minimum: 0, maximum: 1 },
+  },
+} satisfies Record<string, unknown>;
 
 export const discoveryJsonSchema = {
   type: "object",

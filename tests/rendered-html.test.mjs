@@ -14,7 +14,8 @@ test("exposes the Neural Knights discovery-to-deployment experience", async () =
   assert.match(app, /"use client"/);
   assert.match(app, /Build the missing tool from how your company actually operates/);
   assert.match(app, /Try the Northstar demo/);
-  assert.match(app, /Discover what to build/);
+  assert.match(app, /Understand the problem first/);
+  assert.match(app, /Confirm and build the map/);
   assert.match(app, /Company execution map/);
   assert.match(app, /Approve and queue/);
   assert.match(app, /Run checks again/);
@@ -24,6 +25,66 @@ test("exposes the Neural Knights discovery-to-deployment experience", async () =
   assert.match(metadata, /Neural Knights/);
   assert.match(css, /@media \(max-width: 600px\)/);
   assert.match(css, /prefers-reduced-motion/);
+});
+
+test("classifies a biogas dataset as model training and builds an ML-specific path", async () => {
+  const { buildProblemProfile } = await import("../app/lib/problem-taxonomy.ts");
+  const { discoverWorkspace, generateAppSpec } = await import("../app/lib/neural-knights.ts");
+  const sources = [{
+    id: "biogas-data",
+    name: "biogas_traditional_hourly.csv",
+    kind: "csv",
+    content: "temperature,ph,feed_rate,methane,biogas_output\n35,7.1,20,62,145\n36,7.0,21,64,152",
+  }];
+  const goal = "I want to generate more biogas with the current components by training a machine learning model.";
+  const profile = buildProblemProfile({ goal, sources });
+  const result = discoverWorkspace({ workspace: "Biogas", goal, sources, problemProfile: profile });
+  const selected = result.blueprints.find((blueprint) => blueprint.id === "model-training-workbench");
+  const app = generateAppSpec("model-training-workbench", selected, profile);
+
+  assert.equal(profile.domain, "machine-learning");
+  assert.equal(profile.useCase, "model-training-optimization");
+  assert.match(profile.interpretation, /Train and evaluate a model/);
+  assert.equal(result.problemProfile.domain, "machine-learning");
+  assert.ok(result.graph.nodes.some((node) => node.id === "training-pipeline"));
+  assert.ok(result.graph.nodes.some((node) => node.id === "evaluation"));
+  assert.ok(result.graph.nodes.every((node) => !/complaint/i.test(`${node.label} ${node.detail}`)));
+  assert.equal(result.opportunities[0].id, "model-training-workbench");
+  assert.equal(app.runtimeKind, "model-workbench");
+  assert.equal(app.slug, "generated-workspace");
+  assert.ok(app.rules.every((rule) => !/complaint/i.test(`${rule.condition} ${rule.outcome}`)));
+});
+
+test("returns a reviewable problem classification before discovery", async () => {
+  const classificationRoute = await import("../app/api/classify/route.ts");
+  const previousKey = process.env.OPENAI_API_KEY;
+  delete process.env.OPENAI_API_KEY;
+
+  try {
+    const response = await classificationRoute.POST(
+      new Request("http://localhost/api/classify", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          goal: "Train a model to improve biogas yield using current sensor inputs",
+          sources: [{
+            id: "biogas",
+            name: "biogas.csv",
+            kind: "csv",
+            content: "temperature,ph,feed_rate,biogas_output\n35,7.1,20,145",
+          }],
+        }),
+      }),
+    );
+    const result = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(result.profile.domain, "machine-learning");
+    assert.equal(result.profile.useCase, "model-training-optimization");
+    assert.ok(result.profile.clarificationQuestions.length >= 1);
+    assert.equal(result.runtime.mode, "deterministic");
+  } finally {
+    if (previousKey) process.env.OPENAI_API_KEY = previousKey;
+  }
 });
 
 test("builds a deterministic execution map with source provenance", async () => {

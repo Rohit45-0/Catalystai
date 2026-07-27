@@ -47,10 +47,24 @@ import {
   type Opportunity,
   type SourceDocument,
 } from "../lib/neural-knights";
+import {
+  buildProblemProfile,
+  getProblemDomain,
+  problemTaxonomy,
+  type ProblemProfile,
+} from "../lib/problem-taxonomy";
 
 type View = "discover" | "map" | "apps" | "audit";
 type AppTab = "queue" | "evaluations" | "rules";
 type ComplaintStatus = "open" | "approved" | "dismissed";
+type SavedDeployment = {
+  appSpec: AppSpec;
+  workspace: string;
+  goal: string;
+  sources: SourceDocument[];
+  discovery: DiscoveryResult | null;
+  audit: string[];
+};
 
 type Complaint = {
   id: string;
@@ -177,6 +191,11 @@ export function NeuralKnightsApp({ initialMode = "builder" }: { initialMode?: "b
   const [selectedOpportunity, setSelectedOpportunity] = useState("complaint-desk");
   const [appSpec, setAppSpec] = useState<AppSpec | null>(seeded ? generateAppSpec("complaint-desk") : null);
   const [isDiscovering, setIsDiscovering] = useState(false);
+  const [isClassifying, setIsClassifying] = useState(false);
+  const [problemProfile, setProblemProfile] = useState<ProblemProfile | null>(
+    seeded ? discoverWorkspace({ workspace: "Northstar Payments", sources: demoSources }).problemProfile : null,
+  );
+  const [classificationMode, setClassificationMode] = useState("");
   const [discoveryStage, setDiscoveryStage] = useState(0);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isEvaluating, setIsEvaluating] = useState(false);
@@ -185,11 +204,15 @@ export function NeuralKnightsApp({ initialMode = "builder" }: { initialMode?: "b
   const [selectedCaseId, setSelectedCaseId] = useState(complaints[0].id);
   const [caseQuery, setCaseQuery] = useState("");
   const [showResolved, setShowResolved] = useState(false);
-  const [audit, setAudit] = useState([
-    "App v1 passed 12 historical evaluations",
-    "Complaint response policy linked to three workflow rules",
-    "Workspace evidence indexed with source-level provenance",
-  ]);
+  const [audit, setAudit] = useState(
+    seeded
+      ? [
+          "App v1 passed 12 historical evaluations",
+          "Complaint response policy linked to three workflow rules",
+          "Workspace evidence indexed with source-level provenance",
+        ]
+      : ["Workspace ready for source-grounded discovery"],
+  );
   const [toast, setToast] = useState("");
 
   const selectedCase = caseList.find((item) => item.id === selectedCaseId) ?? caseList[0];
@@ -213,8 +236,20 @@ export function NeuralKnightsApp({ initialMode = "builder" }: { initialMode?: "b
     const saved = window.localStorage.getItem("neural-knights-app-spec");
     if (!saved) return;
     try {
-      const parsed = JSON.parse(saved) as AppSpec;
-      const timeout = window.setTimeout(() => setAppSpec(parsed), 0);
+      const parsed = JSON.parse(saved) as AppSpec | SavedDeployment;
+      const timeout = window.setTimeout(() => {
+        if ("appSpec" in parsed) {
+          setAppSpec(parsed.appSpec);
+          setWorkspace(parsed.workspace);
+          setGoal(parsed.goal);
+          setSources(parsed.sources);
+          setDiscovery(parsed.discovery);
+          setProblemProfile(parsed.discovery?.problemProfile ?? null);
+          setAudit(parsed.audit);
+          return;
+        }
+        setAppSpec(parsed);
+      }, 0);
       return () => window.clearTimeout(timeout);
     } catch {
       window.localStorage.removeItem("neural-knights-app-spec");
@@ -243,7 +278,43 @@ export function NeuralKnightsApp({ initialMode = "builder" }: { initialMode?: "b
     setWorkspace("Northstar Payments");
     setGoal("Reduce complaint response delays while preserving policy evidence and human approval.");
     setSources(demoSources);
+    setProblemProfile(null);
+    setClassificationMode("");
     setToast("Demo workspace loaded");
+  }
+
+  function updateGoal(value: string) {
+    setGoal(value);
+    setProblemProfile(null);
+    setClassificationMode("");
+  }
+
+  function updateProblemDomain(domainId: string) {
+    if (!domainId) {
+      setProblemProfile(null);
+      setClassificationMode("");
+      return;
+    }
+    const domain = getProblemDomain(domainId);
+    if (!domain) return;
+    setProblemProfile(buildProblemProfile({
+      goal,
+      sources,
+      domainHint: domain.id,
+      useCaseHint: domain.useCases[0].id,
+    }));
+    setClassificationMode("user-guided");
+  }
+
+  function updateProblemUseCase(useCaseId: string) {
+    if (!problemProfile) return;
+    setProblemProfile(buildProblemProfile({
+      goal,
+      sources,
+      domainHint: problemProfile.domain,
+      useCaseHint: useCaseId,
+    }));
+    setClassificationMode("user-guided");
   }
 
   async function addFiles(files: FileList | null) {
@@ -258,11 +329,44 @@ export function NeuralKnightsApp({ initialMode = "builder" }: { initialMode?: "b
       })),
     );
     setSources((current) => [...current, ...next].slice(0, 6));
+    setProblemProfile(null);
+    setClassificationMode("");
+  }
+
+  async function classifyProblem() {
+    if (!goal.trim() || sources.length === 0) {
+      setToast("Add a problem statement and at least one source");
+      return;
+    }
+    setIsClassifying(true);
+    try {
+      const response = await fetch("/api/classify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ goal, sources }),
+      });
+      if (!response.ok) throw new Error("Classification failed");
+      const result = (await response.json()) as {
+        profile: ProblemProfile;
+        runtime: { mode: string; model: string | null };
+      };
+      setProblemProfile(result.profile);
+      setClassificationMode(result.runtime.mode);
+      setToast(`Problem understood as ${result.profile.domainLabel} / ${result.profile.useCaseLabel}`);
+    } catch {
+      setToast("The problem could not be classified. Choose a problem area manually.");
+    } finally {
+      setIsClassifying(false);
+    }
   }
 
   async function runDiscovery() {
     if (!goal.trim() || sources.length === 0) {
       setToast("Add a problem statement and at least one source");
+      return;
+    }
+    if (!problemProfile) {
+      await classifyProblem();
       return;
     }
     setDiscoveryStage(0);
@@ -271,7 +375,7 @@ export function NeuralKnightsApp({ initialMode = "builder" }: { initialMode?: "b
       const response = await fetch("/api/discover", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workspace, goal, sources }),
+        body: JSON.stringify({ workspace, goal, sources, problemProfile }),
       });
       if (!response.ok) throw new Error("Discovery failed");
       const result = (await response.json()) as DiscoveryResult;
@@ -305,6 +409,7 @@ export function NeuralKnightsApp({ initialMode = "builder" }: { initialMode?: "b
           blueprint,
           workspace: discovery?.workspace,
           discoverySummary: discovery?.summary,
+          problemProfile: discovery?.problemProfile,
         }),
       });
       if (!response.ok) throw new Error("Generation failed");
@@ -326,7 +431,8 @@ export function NeuralKnightsApp({ initialMode = "builder" }: { initialMode?: "b
 
   function deployApplication() {
     if (!appSpec) return;
-    window.localStorage.setItem("neural-knights-app-spec", JSON.stringify(appSpec));
+    const deployment: SavedDeployment = { appSpec, workspace, goal, sources, discovery, audit };
+    window.localStorage.setItem("neural-knights-app-spec", JSON.stringify(deployment));
     router.push(`/apps/${appSpec.slug}`);
   }
 
@@ -453,12 +559,22 @@ export function NeuralKnightsApp({ initialMode = "builder" }: { initialMode?: "b
               sources={sources}
               sourceCharacters={sourceCharacters}
               loading={isDiscovering}
+              classifying={isClassifying}
               discoveryStage={discoveryStage}
               setWorkspace={setWorkspace}
-              setGoal={setGoal}
+              setGoal={updateGoal}
+              problemProfile={problemProfile}
+              classificationMode={classificationMode}
+              setProblemDomain={updateProblemDomain}
+              setProblemUseCase={updateProblemUseCase}
               loadDemo={loadDemoWorkspace}
               addFiles={addFiles}
-              removeSource={(id) => setSources((current) => current.filter((source) => source.id !== id))}
+              removeSource={(id) => {
+                setSources((current) => current.filter((source) => source.id !== id));
+                setProblemProfile(null);
+                setClassificationMode("");
+              }}
+              classifyProblem={classifyProblem}
               runDiscovery={runDiscovery}
               fileInput={fileInput}
             />
@@ -554,12 +670,18 @@ function DiscoverView({
   sources,
   sourceCharacters,
   loading,
+  classifying,
   discoveryStage,
   setWorkspace,
   setGoal,
+  problemProfile,
+  classificationMode,
+  setProblemDomain,
+  setProblemUseCase,
   loadDemo,
   addFiles,
   removeSource,
+  classifyProblem,
   runDiscovery,
   fileInput,
 }: {
@@ -568,12 +690,18 @@ function DiscoverView({
   sources: SourceDocument[];
   sourceCharacters: number;
   loading: boolean;
+  classifying: boolean;
   discoveryStage: number;
   setWorkspace: (value: string) => void;
   setGoal: (value: string) => void;
+  problemProfile: ProblemProfile | null;
+  classificationMode: string;
+  setProblemDomain: (value: string) => void;
+  setProblemUseCase: (value: string) => void;
   loadDemo: () => void;
   addFiles: (files: FileList | null) => void;
   removeSource: (id: string) => void;
+  classifyProblem: () => void;
   runDiscovery: () => void;
   fileInput: React.RefObject<HTMLInputElement | null>;
 }) {
@@ -594,7 +722,7 @@ function DiscoverView({
         <section className="surface problem-surface">
           <div className="surface-header">
             <span className="step-number">1</span>
-            <div><h2>Describe the operation</h2><p>Start with the delay, repeated task, or decision you want to improve.</p></div>
+            <div><h2>Describe the problem</h2><p>State the outcome you want, the available inputs, and what is currently missing.</p></div>
           </div>
           <label className="field-label" htmlFor="workspace-name">Workspace</label>
           <input
@@ -604,16 +732,38 @@ function DiscoverView({
             onChange={(event) => setWorkspace(event.target.value)}
             placeholder="Acme Operations"
           />
-          <label className="field-label" htmlFor="problem-goal">Operational problem</label>
+          <label className="field-label" htmlFor="problem-goal">Problem statement</label>
           <textarea
             id="problem-goal"
             className="problem-input"
             value={goal}
             onChange={(event) => setGoal(event.target.value)}
-            placeholder="Our compliance reviews are delayed because the team moves cases between spreadsheets and chat..."
+            placeholder="We have historical production data and want to train a model that predicts and improves biogas output using the current components..."
           />
           <div className="prompt-hints">
-            <span>What breaks?</span><span>Who owns it?</span><span>What must stay controlled?</span>
+            <span>Desired outcome</span><span>Available inputs</span><span>Success measure</span>
+          </div>
+          <div className="taxonomy-fields">
+            <label>
+              <span>Problem area</span>
+              <select value={problemProfile?.domain ?? ""} onChange={(event) => setProblemDomain(event.target.value)}>
+                <option value="">Auto-detect from problem and data</option>
+                {problemTaxonomy.map((domain) => <option value={domain.id} key={domain.id}>{domain.label}</option>)}
+              </select>
+            </label>
+            <label>
+              <span>Specific problem</span>
+              <select
+                value={problemProfile?.useCase ?? ""}
+                disabled={!problemProfile}
+                onChange={(event) => setProblemUseCase(event.target.value)}
+              >
+                {!problemProfile ? <option value="">Classify the problem first</option> : null}
+                {getProblemDomain(problemProfile?.domain)?.useCases.map((useCase) => (
+                  <option value={useCase.id} key={useCase.id}>{useCase.label}</option>
+                ))}
+              </select>
+            </label>
           </div>
         </section>
 
@@ -658,8 +808,11 @@ function DiscoverView({
         <aside className="intelligence-preview surface">
           <div className="preview-top">
             <span className="preview-mark"><BrainCircuit size={20} /></span>
-            <div><span className="eyebrow">Workspace signal</span><h2>{loading ? "Understanding the operation" : "Ready to discover"}</h2></div>
-            <span className="live-model-pill"><i /> {loading ? "Working" : "Live AI"}</span>
+            <div>
+              <span className="eyebrow">Problem understanding</span>
+              <h2>{classifying ? "Classifying the problem" : loading ? "Building the execution map" : problemProfile ? "Confirm our understanding" : "Ready to classify"}</h2>
+            </div>
+            <span className="live-model-pill"><i /> {classifying || loading ? "Working" : problemProfile ? `${Math.round(problemProfile.confidence * 100)}% match` : "Classifier ready"}</span>
           </div>
 
           <div className="signal-canvas">
@@ -671,15 +824,34 @@ function DiscoverView({
             <div className="signal-flow">
               <span /><i /><span /><i /><span />
             </div>
-            <div className="signal-output">
-              <Network size={17} />
-              <div><strong>Execution map</strong><small>Grounded in your sources</small></div>
-              <ArrowRight size={14} />
-              <LayoutDashboard size={17} />
-            </div>
+            {problemProfile ? (
+              <div className="classification-review">
+                <span className="classification-path">{problemProfile.domainLabel}<ChevronRight size={12} />{problemProfile.useCaseLabel}</span>
+                <p>{problemProfile.interpretation}</p>
+                <div>
+                  {problemProfile.evidenceSignals.map((signal) => <span key={signal}><Check size={11} />{signal}</span>)}
+                </div>
+                <ul>
+                  {problemProfile.clarificationQuestions.map((question) => <li key={question}>{question}</li>)}
+                </ul>
+                <small>{classificationMode === "live" ? "AI-classified. Change the selectors if this is wrong." : "Classified from your statement and source structure. Change the selectors if needed."}</small>
+              </div>
+            ) : (
+              <div className="signal-output">
+                <BrainCircuit size={17} />
+                <div><strong>Problem classification</strong><small>Domain, subproblem, and intent</small></div>
+                <ArrowRight size={14} />
+                <Network size={17} />
+              </div>
+            )}
           </div>
 
-          {loading ? (
+          {classifying ? (
+            <div className="classification-loading" aria-live="polite">
+              <LoaderCircle className="spin" size={17} />
+              <div><strong>Reading the objective and data shape</strong><small>Separating model work from operations workflows</small></div>
+            </div>
+          ) : loading ? (
             <div className="discovery-progress" aria-live="polite">
               <div className="progress-track"><span style={{ width: `${((discoveryStage + 1) / discoveryStages.length) * 100}%` }} /></div>
               {discoveryStages.map((stage, index) => (
@@ -698,8 +870,18 @@ function DiscoverView({
           )}
 
           <div className="safety-note"><ShieldCheck size={16} /><span>Source content is treated as evidence, never as instructions. External actions remain approval-gated.</span></div>
-          <button className="primary-button discover-button" onClick={runDiscovery} disabled={loading}>
-            {loading ? <><LoaderCircle className="spin" size={16} /> {discoveryStages[discoveryStage]}</> : <><Sparkles size={16} /> Discover what to build <ArrowRight size={16} /></>}
+          <button
+            className="primary-button discover-button"
+            onClick={problemProfile ? runDiscovery : classifyProblem}
+            disabled={loading || classifying}
+          >
+            {classifying
+              ? <><LoaderCircle className="spin" size={16} /> Understanding the problem</>
+              : loading
+                ? <><LoaderCircle className="spin" size={16} /> {discoveryStages[discoveryStage]}</>
+                : problemProfile
+                  ? <><CheckCircle2 size={16} /> Confirm and build the map <ArrowRight size={16} /></>
+                  : <><BrainCircuit size={16} /> Understand the problem first <ArrowRight size={16} /></>}
           </button>
         </aside>
       </div>
@@ -743,6 +925,9 @@ function MapView({
       <div className="page-heading">
         <div><span className="eyebrow">Company execution map</span><h1>{discovery.workspace}</h1><p>{discovery.summary}</p></div>
         <div className="map-heading-badges">
+          <span className="classification-badge">
+            <BrainCircuit size={14} /> {discovery.problemProfile.domainLabel} / {discovery.problemProfile.useCaseLabel}
+          </span>
           {discovery.runtime ? (
             <span className={`runtime-badge runtime-${discovery.runtime.mode}`}>
               <i /> {discovery.runtime.mode === "live" ? `${discovery.runtime.model} / ${discovery.runtime.latencyMs} ms` : "Safe fallback"}
@@ -904,6 +1089,27 @@ function GeneratedAppView({
   deployApplication: () => void;
 }) {
   const displayedCase = cases.find((item) => item.id === selectedCase.id) ?? cases[0];
+  const runtimeKind = appSpec.runtimeKind ?? "case-queue";
+  const labels = appSpec.labels ?? {
+    primaryView: "Complaint queue",
+    itemSingular: "complaint",
+    itemPlural: "complaints",
+    metric: "open complaints",
+  };
+  const isModelWorkbench = runtimeKind === "model-workbench";
+  const evaluationChecks = isModelWorkbench
+    ? [
+        "Target and success metric must be confirmed before training",
+        "Dataset version and holdout split remain reproducible",
+        "Every candidate is compared with the same baseline",
+        "Model selection requires human approval and evidence",
+      ]
+    : [
+        "High-risk complaint requires compliance review",
+        "Transfer failure routes to Payments Operations",
+        "Financial commitment remains approval-gated",
+        "Every decision includes source evidence",
+      ];
 
   return (
     <>
@@ -919,12 +1125,58 @@ function GeneratedAppView({
       </div>
 
       <div className="app-tabs" role="tablist" aria-label="Generated app views">
-        <button className={appTab === "queue" ? "tab-active" : ""} onClick={() => setAppTab("queue")}>Complaint queue <span>{openCount}</span></button>
+        <button className={appTab === "queue" ? "tab-active" : ""} onClick={() => setAppTab("queue")}>{labels.primaryView} <span>{isModelWorkbench ? 3 : openCount}</span></button>
         <button className={appTab === "evaluations" ? "tab-active" : ""} onClick={() => setAppTab("evaluations")}>Evaluations</button>
         <button className={appTab === "rules" ? "tab-active" : ""} onClick={() => setAppTab("rules")}>Rules & safety</button>
       </div>
 
       {appTab === "queue" ? (
+        isModelWorkbench ? (
+          <>
+            <div className="queue-metrics">
+              <Metric value="1" label="dataset connected" icon={Database} />
+              <Metric value="Needs input" label="target column" icon={CircleDot} />
+              <Metric value="0" label="completed runs" icon={Activity} />
+              <Metric value="Required" label="selection approval" icon={LockKeyhole} />
+            </div>
+            <div className="model-workbench">
+              <section className="surface experiment-plan">
+                <div className="panel-heading"><div><h2>Training plan</h2><p>Resolve the objective before spending compute.</p></div><BrainCircuit size={18} /></div>
+                <div className="training-objective">
+                  <span>01</span>
+                  <div><strong>Confirm prediction target</strong><p>Choose the column representing the output to predict, such as biogas yield or production volume.</p></div>
+                  <em>Needs input</em>
+                </div>
+                <div className="training-objective">
+                  <span>02</span>
+                  <div><strong>Choose evaluation metric</strong><p>Define how improvement will be measured before comparing models.</p></div>
+                  <em>Needs input</em>
+                </div>
+                <div className="training-objective">
+                  <span>03</span>
+                  <div><strong>Run reproducible baseline</strong><p>Validate the data, preserve a holdout split, and train the first benchmark.</p></div>
+                  <button className="secondary-button" onClick={runEvaluations} disabled={isEvaluating}>
+                    {isEvaluating ? <LoaderCircle className="spin" size={14} /> : <Activity size={14} />} {isEvaluating ? "Preparing" : "Prepare run"}
+                  </button>
+                </div>
+              </section>
+              <aside className="surface experiment-queue">
+                <div className="panel-heading"><div><h2>Candidate runs</h2><p>No invented model metrics</p></div><ListChecks size={18} /></div>
+                {[
+                  ["Baseline", "Waiting for target and metric"],
+                  ["Candidate A", "Blocked until baseline completes"],
+                  ["Candidate B", "Blocked until baseline completes"],
+                ].map(([name, status], index) => (
+                  <div className="experiment-row" key={name}>
+                    <span>{String(index + 1).padStart(2, "0")}</span>
+                    <div><strong>{name}</strong><small>{status}</small></div>
+                    <em>{index === 0 ? "Ready" : "Blocked"}</em>
+                  </div>
+                ))}
+              </aside>
+            </div>
+          </>
+        ) : (
         <>
           <div className="queue-metrics">
             <Metric value={`${openCount}`} label="open complaints" icon={AlertTriangle} />
@@ -962,6 +1214,7 @@ function GeneratedAppView({
             )}
           </div>
         </>
+        )
       ) : null}
 
       {appTab === "evaluations" ? (
@@ -973,7 +1226,7 @@ function GeneratedAppView({
             <button className="secondary-button" onClick={runEvaluations} disabled={isEvaluating}><RefreshCcw size={14} /> Run checks again</button>
           </div>
           <div className="evaluation-list">
-            {["High-risk complaint requires compliance review", "Transfer failure routes to Payments Operations", "Financial commitment remains approval-gated", "Every decision includes source evidence"].map((item) => (
+            {evaluationChecks.map((item) => (
               <div key={item}><Check size={15} /><span><strong>{item}</strong><small>Expected and actual decisions matched</small></span><em>Passed</em></div>
             ))}
           </div>
@@ -983,7 +1236,7 @@ function GeneratedAppView({
       {appTab === "rules" ? (
         <div className="rules-layout">
           <section className="surface rule-list">
-            <div className="panel-heading"><div><h2>Generated workflow rules</h2><p>Versioned rules derived from policy evidence.</p></div><GitBranch size={18} /></div>
+            <div className="panel-heading"><div><h2>Generated workflow rules</h2><p>{isModelWorkbench ? "Versioned controls for training and model selection." : "Versioned rules derived from policy evidence."}</p></div><GitBranch size={18} /></div>
             {appSpec.rules.map((rule) => (
               <article key={rule.id}>
                 <span className="rule-icon"><Workflow size={15} /></span>
@@ -995,7 +1248,9 @@ function GeneratedAppView({
           <section className="surface safety-panel">
             <ShieldCheck size={23} />
             <h2>Constrained by design</h2>
-            <p>This app can draft responses, request review, and queue escalations. It cannot send financial commitments or execute arbitrary code.</p>
+            <p>{isModelWorkbench
+              ? "This app can prepare training runs, compare evaluation evidence, and request model selection. It cannot silently choose a target, fabricate metrics, or deploy a model."
+              : "This app can draft responses, request review, and queue escalations. It cannot send financial commitments or execute arbitrary code."}</p>
             <div>{appSpec.allowedActions.map((action) => <span key={action}><Check size={13} /> {action.replaceAll("_", " ")}</span>)}</div>
           </section>
         </div>

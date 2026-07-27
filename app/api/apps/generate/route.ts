@@ -8,18 +8,24 @@ import {
   appSpecPayloadSchema,
 } from "../../../lib/neural-knights-schemas.ts";
 import { createStructuredResponse } from "../../../lib/openai-responses.ts";
+import type { ProblemProfile } from "../../../lib/problem-taxonomy.ts";
 
 type GenerateRequest = {
   blueprintId?: string;
   blueprint?: WorkflowBlueprint;
   workspace?: string;
   discoverySummary?: string;
+  problemProfile?: ProblemProfile;
 };
 
 export async function POST(request: Request) {
   const startedAt = Date.now();
   const body = (await request.json().catch(() => ({}))) as GenerateRequest;
-  const base = generateAppSpec(body.blueprintId || body.blueprint?.id || "complaint-desk");
+  const base = generateAppSpec(
+    body.blueprintId || body.blueprint?.id || "complaint-desk",
+    body.blueprint,
+    body.problemProfile,
+  );
   let appSpec: AppSpec = base;
   let mode: "live" | "deterministic-demo" | "deterministic-fallback" =
     process.env.OPENAI_API_KEY ? "deterministic-fallback" : "deterministic-demo";
@@ -36,6 +42,7 @@ export async function POST(request: Request) {
           workspace: body.workspace || "New workspace",
           discoverySummary: body.discoverySummary || "",
           selectedBlueprint: body.blueprint,
+          confirmedProblemClassification: body.problemProfile,
           runtimeConstraints: {
             allowedActions: base.allowedActions,
             views: base.views,

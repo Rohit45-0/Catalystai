@@ -2,7 +2,7 @@
 
 Neural Knights turns company knowledge into governed internal applications.
 
-A user describes an operational problem and adds source documents. Neural Knights maps the people, systems, policies, records, decisions, and bottlenecks involved; recommends evidence-backed applications; and deploys the selected workflow on a constrained runtime.
+A user describes a problem and adds source documents. Neural Knights first classifies the domain and specific use case for confirmation, then maps the people, systems, datasets, policies, records, decisions, and bottlenecks involved; recommends evidence-backed applications; and deploys the selected workflow on a constrained runtime.
 
 ## Current MVP
 
@@ -15,6 +15,8 @@ The first complete workflow is complaint operations for a regulated fintech team
 5. Generate a Complaint Risk & Escalation Desk.
 6. Validate its rules against historical scenarios.
 7. Approve a governed escalation and inspect the audit history.
+
+The broader classifier currently covers machine learning and data, operations and compliance, customer support, sales and marketing, logistics and commerce, and finance and back-office work. Each area has explicit subproblems, and deterministic domain playbooks keep the zero-cost fallback relevant.
 
 No API key or external account is required for the deterministic demo. When an OpenAI API key is configured, discovery and application generation use live structured model output and fall back safely if the request fails. The included demo workspace is synthetic.
 
@@ -42,7 +44,7 @@ Keep the key local and never commit it.
 npm run verify
 ```
 
-This runs ESLint, a production build, and functional tests covering the execution map, evidence provenance, application specification, and APIs.
+This runs ESLint, a production build, and functional tests covering problem classification, the execution map, evidence provenance, application specification, and APIs.
 
 ## Safety model
 

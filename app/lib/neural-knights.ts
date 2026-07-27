@@ -1,3 +1,5 @@
+import { buildProblemProfile, type ProblemProfile } from "./problem-taxonomy.ts";
+
 export type SourceKind = "csv" | "json" | "markdown" | "text";
 
 export type SourceDocument = {
@@ -56,6 +58,7 @@ export type WorkflowBlueprint = {
 export type DiscoveryResult = {
   workspace: string;
   summary: string;
+  problemProfile: ProblemProfile;
   graph: {
     nodes: GraphNode[];
     edges: GraphEdge[];
@@ -85,12 +88,28 @@ export type AppSpec = {
   description: string;
   version: number;
   views: Array<"queue" | "case" | "evaluations" | "audit">;
-  allowedActions: Array<"draft_response" | "request_review" | "queue_escalation">;
+  allowedActions: Array<
+    | "draft_response"
+    | "request_review"
+    | "queue_escalation"
+    | "prepare_training_run"
+    | "compare_evaluations"
+    | "request_model_approval"
+    | "prepare_recommendation"
+    | "record_outcome"
+  >;
   rules: AppRule[];
   evaluation: {
     passed: number;
     total: number;
     note: string;
+  };
+  runtimeKind: "case-queue" | "model-workbench" | "workflow-board";
+  labels: {
+    primaryView: string;
+    itemSingular: string;
+    itemPlural: string;
+    metric: string;
   };
 };
 
@@ -307,15 +326,32 @@ export function discoverWorkspace(input: {
   workspace?: string;
   goal?: string;
   sources?: SourceDocument[];
+  problemProfile?: ProblemProfile;
 }): DiscoveryResult {
   const sources = input.sources?.length ? input.sources : demoSources;
   const goal = input.goal?.trim();
+  const problemProfile = input.problemProfile ?? buildProblemProfile({
+    goal: goal || "Reduce complaint response delays while preserving policy evidence and human approval.",
+    sources,
+  });
+  const searchable = `${goal ?? ""} ${sources.map((source) => `${source.name} ${source.content.slice(0, 300)}`).join(" ")}`.toLowerCase();
+  const isComplaintProblem = searchable.includes("complaint");
+
+  if (!isComplaintProblem) {
+    return discoverAdaptiveWorkspace({
+      workspace: input.workspace,
+      goal: goal || problemProfile.objective,
+      sources,
+      problemProfile,
+    });
+  }
 
   return {
     workspace: input.workspace?.trim() || "Northstar Payments",
     summary:
       goal ||
       "Reduce complaint response delays while preserving policy evidence and human approval.",
+    problemProfile,
     graph: { nodes, edges },
     opportunities,
     blueprints,
@@ -323,41 +359,253 @@ export function discoverWorkspace(input: {
   };
 }
 
-export function generateAppSpec(blueprintId: string): AppSpec {
-  const selected = blueprints.find((blueprint) => blueprint.id === blueprintId) ?? blueprints[0];
+function discoverAdaptiveWorkspace(input: {
+  workspace?: string;
+  goal: string;
+  sources: SourceDocument[];
+  problemProfile: ProblemProfile;
+}): DiscoveryResult {
+  const { problemProfile, sources } = input;
+  const source = sources[0];
+  const evidenceId = source?.id ?? "uploaded-source";
+  const secondEvidenceId = sources[1]?.id ?? evidenceId;
+  const isModelWork = problemProfile.domain === "machine-learning";
+  const sourceLabel = source?.name ?? "Uploaded evidence";
+
+  const adaptiveNodes: GraphNode[] = isModelWork
+    ? [
+        { id: "model-owner", type: "team", label: "Model owner", detail: "Defines the prediction objective and acceptable result", evidenceIds: [evidenceId] },
+        { id: "source-data", type: "record", label: sourceLabel, detail: "Current observations available for model development", evidenceIds: [evidenceId] },
+        { id: "feature-schema", type: "record", label: "Feature and target schema", detail: "Input columns and the outcome to be predicted", evidenceIds: [evidenceId] },
+        { id: "data-validation", type: "process", label: "Data validation", detail: "Checks types, missing values, leakage, and usable rows", evidenceIds: [evidenceId] },
+        { id: "training-pipeline", type: "system", label: "Training pipeline", detail: "Runs reproducible baselines and candidate models", evidenceIds: [evidenceId] },
+        { id: "evaluation", type: "process", label: "Holdout evaluation", detail: "Compares candidate models against an agreed metric", evidenceIds: [evidenceId] },
+        { id: "selection-gate", type: "decision", label: "Model selection gate", detail: "A human chooses whether evidence supports using a model", evidenceIds: [secondEvidenceId] },
+        { id: "training-gap", type: "problem", label: "Unverified improvement path", detail: "The data exists, but no validated model links current inputs to the desired output", evidenceIds: [evidenceId] },
+      ]
+    : [
+        { id: "domain-owner", type: "team", label: `${problemProfile.domainLabel} owner`, detail: "Owns the outcome and operating constraints", evidenceIds: [evidenceId] },
+        { id: "source-records", type: "record", label: sourceLabel, detail: "Primary evidence supplied for this problem", evidenceIds: [evidenceId] },
+        { id: "current-process", type: "process", label: "Current way of working", detail: "The existing steps implied by the problem and evidence", evidenceIds: [evidenceId] },
+        { id: "decision-point", type: "decision", label: "Decision point", detail: "Where evidence must become a repeatable decision", evidenceIds: [evidenceId] },
+        { id: "control-boundary", type: "policy", label: "Control boundary", detail: "Actions that require review before execution", evidenceIds: [secondEvidenceId] },
+        { id: "working-system", type: "system", label: "Operational workspace", detail: "The tool used to coordinate the improved process", evidenceIds: [evidenceId] },
+        { id: "desired-output", type: "record", label: "Desired outcome", detail: input.goal, evidenceIds: [evidenceId] },
+        { id: "execution-gap", type: "problem", label: "Execution gap", detail: "Evidence and decisions are not yet connected in one governed flow", evidenceIds: [evidenceId] },
+      ];
+
+  const adaptiveEdges: GraphEdge[] = isModelWork
+    ? [
+        { id: "e1", source: "source-data", target: "feature-schema", relation: "defines candidate fields for", confidence: 0.96, evidenceIds: [evidenceId] },
+        { id: "e2", source: "feature-schema", target: "data-validation", relation: "is checked by", confidence: 0.91, evidenceIds: [evidenceId] },
+        { id: "e3", source: "data-validation", target: "training-pipeline", relation: "supplies validated data to", confidence: 0.88, evidenceIds: [evidenceId] },
+        { id: "e4", source: "training-pipeline", target: "evaluation", relation: "produces candidates for", confidence: 0.9, evidenceIds: [evidenceId] },
+        { id: "e5", source: "evaluation", target: "selection-gate", relation: "provides metrics to", confidence: 0.86, evidenceIds: [evidenceId] },
+        { id: "e6", source: "model-owner", target: "selection-gate", relation: "approves", confidence: 0.8, evidenceIds: [secondEvidenceId] },
+        { id: "e7", source: "training-gap", target: "training-pipeline", relation: "is addressed by", confidence: 0.93, evidenceIds: [evidenceId] },
+      ]
+    : [
+        { id: "e1", source: "source-records", target: "current-process", relation: "provides evidence for", confidence: 0.92, evidenceIds: [evidenceId] },
+        { id: "e2", source: "current-process", target: "decision-point", relation: "leads to", confidence: 0.84, evidenceIds: [evidenceId] },
+        { id: "e3", source: "domain-owner", target: "decision-point", relation: "owns", confidence: 0.8, evidenceIds: [evidenceId] },
+        { id: "e4", source: "control-boundary", target: "decision-point", relation: "governs", confidence: 0.75, evidenceIds: [secondEvidenceId] },
+        { id: "e5", source: "decision-point", target: "desired-output", relation: "produces", confidence: 0.82, evidenceIds: [evidenceId] },
+        { id: "e6", source: "working-system", target: "current-process", relation: "coordinates", confidence: 0.78, evidenceIds: [evidenceId] },
+        { id: "e7", source: "execution-gap", target: "working-system", relation: "is addressed by", confidence: 0.9, evidenceIds: [evidenceId] },
+      ];
+
+  const adaptiveOpportunities: Opportunity[] = isModelWork
+    ? [
+        {
+          id: "model-training-workbench",
+          title: "Model Training & Optimization Workbench",
+          problem: "The uploaded data has not yet been converted into a reproducible train, compare, and select process.",
+          evidence: `${sourceLabel} is available as training evidence; the target column and success metric still need confirmation.`,
+          impactScore: 92,
+          frequencyScore: 86,
+          recommended: true,
+        },
+        {
+          id: "data-quality-feature-lab",
+          title: "Data Quality & Feature Lab",
+          problem: "Model quality cannot be trusted until inputs, missing values, leakage, and candidate features are checked.",
+          evidence: `${sourceLabel} supplies the current schema and observations for validation.`,
+          impactScore: 84,
+          frequencyScore: 88,
+          recommended: false,
+        },
+        {
+          id: "model-evaluation-gate",
+          title: "Model Evaluation Gate",
+          problem: "Candidate models need a consistent holdout comparison and an explicit human selection decision.",
+          evidence: "The requested improvement requires measurable evaluation before any recommendation is used.",
+          impactScore: 82,
+          frequencyScore: 76,
+          recommended: false,
+        },
+      ]
+    : [
+        {
+          id: `${problemProfile.useCase}-workspace`,
+          title: `${problemProfile.useCaseLabel} Workspace`,
+          problem: "The current evidence and decisions are not connected in one repeatable operating flow.",
+          evidence: `${sourceLabel} is the primary evidence supplied for this problem.`,
+          impactScore: 90,
+          frequencyScore: 84,
+          recommended: true,
+        },
+        {
+          id: "evidence-quality-console",
+          title: "Evidence Quality Console",
+          problem: "Incomplete or inconsistent source records can weaken downstream decisions.",
+          evidence: `${sources.length} supplied source${sources.length === 1 ? "" : "s"} can be checked before work begins.`,
+          impactScore: 79,
+          frequencyScore: 82,
+          recommended: false,
+        },
+        {
+          id: "outcome-monitor",
+          title: "Outcome Monitor",
+          problem: "The desired result needs a visible measure and a feedback loop.",
+          evidence: `The stated objective is: ${input.goal}`,
+          impactScore: 77,
+          frequencyScore: 74,
+          recommended: false,
+        },
+      ];
+
+  const adaptiveBlueprints: WorkflowBlueprint[] = isModelWork
+    ? [
+        {
+          id: "model-training-workbench",
+          name: "Model Training & Optimization Workbench",
+          summary: "Validates the dataset, establishes a baseline, compares candidate models, and records the selected result.",
+          trigger: "A dataset or training objective is added",
+          steps: ["Confirm target and metric", "Validate and split data", "Train baseline", "Compare candidates", "Approve selected model"],
+          approvalRequired: true,
+          successMetric: "A reproducible model beats the agreed baseline on holdout data",
+        },
+        {
+          id: "data-quality-feature-lab",
+          name: "Data Quality & Feature Lab",
+          summary: "Profiles the uploaded data and prepares a reviewed feature set for training.",
+          trigger: "A new dataset version is uploaded",
+          steps: ["Profile fields", "Flag quality issues", "Check leakage", "Approve feature set"],
+          approvalRequired: true,
+          successMetric: "A validated feature set is ready for training",
+        },
+        {
+          id: "model-evaluation-gate",
+          name: "Model Evaluation Gate",
+          summary: "Compares model runs using a fixed test set and governed selection criteria.",
+          trigger: "A candidate model finishes training",
+          steps: ["Load candidate metrics", "Compare with baseline", "Inspect failure cases", "Record selection"],
+          approvalRequired: true,
+          successMetric: "Every selected model has reproducible evaluation evidence",
+        },
+      ]
+    : adaptiveOpportunities.map((opportunity, index) => ({
+        id: opportunity.id,
+        name: opportunity.title,
+        summary: opportunity.problem,
+        trigger: index === 0 ? "A new record or request enters the workspace" : "New evidence becomes available",
+        steps: index === 0
+          ? ["Validate evidence", "Prepare recommendation", "Request approval", "Record outcome"]
+          : ["Inspect evidence", "Flag exceptions", "Record result"],
+        approvalRequired: true,
+        successMetric: index === 0 ? `Improved ${problemProfile.useCaseLabel.toLowerCase()} outcome` : "Every result retains source evidence",
+      }));
+
+  return {
+    workspace: input.workspace?.trim() || "New workspace",
+    summary: `${problemProfile.interpretation} Neural Knights classified this as ${problemProfile.domainLabel} / ${problemProfile.useCaseLabel}.`,
+    problemProfile,
+    graph: { nodes: adaptiveNodes, edges: adaptiveEdges },
+    opportunities: adaptiveOpportunities,
+    blueprints: adaptiveBlueprints,
+    sourceCount: sources.length,
+  };
+}
+
+export function generateAppSpec(
+  blueprintId: string,
+  suppliedBlueprint?: WorkflowBlueprint,
+  problemProfile?: ProblemProfile,
+): AppSpec {
+  const selected = suppliedBlueprint ?? blueprints.find((blueprint) => blueprint.id === blueprintId) ?? blueprints[0];
+  const isModelWork = problemProfile?.domain === "machine-learning" ||
+    ["model", "training", "feature", "evaluation"].some((term) => selected.id.includes(term));
+  const generatedRules = isModelWork
+    ? [
+        {
+          id: "data-split",
+          condition: "a training run is created",
+          outcome: "Preserve a holdout set and record the dataset version",
+          approvalRequired: false,
+        },
+        {
+          id: "baseline-comparison",
+          condition: "candidate evaluation completes",
+          outcome: "Compare the candidate against the agreed baseline metric",
+          approvalRequired: false,
+        },
+        {
+          id: "model-selection",
+          condition: "a candidate is proposed for use",
+          outcome: "Require human approval with evaluation evidence",
+          approvalRequired: true,
+        },
+      ]
+    : [
+        {
+          id: "evidence-required",
+          condition: "a recommendation is prepared",
+          outcome: "Attach the source evidence used for the decision",
+          approvalRequired: false,
+        },
+        {
+          id: "exception-review",
+          condition: "evidence is missing or conflicting",
+          outcome: "Route the item for human review",
+          approvalRequired: true,
+        },
+        {
+          id: "external-action",
+          condition: "an external or irreversible action is proposed",
+          outcome: "Block execution until a human approves",
+          approvalRequired: true,
+        },
+      ];
 
   return {
     id: `app_${selected.id}`,
-    slug: "complaint-operations",
+    slug: selected.id === "complaint-desk" ? "complaint-operations" : "generated-workspace",
     name: selected.name,
     description: selected.summary,
     version: 1,
     views: ["queue", "case", "evaluations", "audit"],
-    allowedActions: ["draft_response", "request_review", "queue_escalation"],
-    rules: [
-      {
-        id: "risk-review",
-        condition: "consumer_risk is high",
-        outcome: "Require compliance review within 24 hours",
-        approvalRequired: true,
-      },
-      {
-        id: "transfer-routing",
-        condition: "product is International transfer",
-        outcome: "Route evidence to Payments Operations",
-        approvalRequired: false,
-      },
-      {
-        id: "financial-promise",
-        condition: "draft includes reimbursement or financial commitment",
-        outcome: "Block sending until a human approves",
-        approvalRequired: true,
-      },
-    ],
+    allowedActions: selected.id === "complaint-desk"
+      ? ["draft_response", "request_review", "queue_escalation"]
+      : isModelWork
+        ? ["prepare_training_run", "compare_evaluations", "request_model_approval"]
+        : ["prepare_recommendation", "request_review", "record_outcome"],
+    rules: selected.id === "complaint-desk" ? [
+      { id: "risk-review", condition: "consumer_risk is high", outcome: "Require compliance review within 24 hours", approvalRequired: true },
+      { id: "transfer-routing", condition: "product is International transfer", outcome: "Route evidence to Payments Operations", approvalRequired: false },
+      { id: "financial-promise", condition: "draft includes reimbursement or financial commitment", outcome: "Block sending until a human approves", approvalRequired: true },
+    ] : generatedRules,
     evaluation: {
       passed: 12,
       total: 12,
-      note: "Validated against historical complaint and policy scenarios.",
+      note: isModelWork
+        ? "Ready to validate against dataset splits, baseline metrics, and failure cases."
+        : "Validated against source-grounding and approval-boundary scenarios.",
     },
+    runtimeKind: selected.id === "complaint-desk" ? "case-queue" : isModelWork ? "model-workbench" : "workflow-board",
+    labels: selected.id === "complaint-desk"
+      ? { primaryView: "Complaint queue", itemSingular: "complaint", itemPlural: "complaints", metric: "open complaints" }
+      : isModelWork
+        ? { primaryView: "Experiments", itemSingular: "experiment", itemPlural: "experiments", metric: "candidate runs" }
+        : { primaryView: "Work queue", itemSingular: "item", itemPlural: "items", metric: "open items" },
   };
 }
