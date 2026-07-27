@@ -8,6 +8,7 @@ import {
   OpenAIResponseError,
 } from "../../lib/openai-responses.ts";
 import { buildProblemProfile, type ProblemProfile } from "../../lib/problem-taxonomy.ts";
+import { analyzeProblemEvidence } from "../../lib/evidence-analysis.ts";
 
 type DiscoverRequest = {
   workspace?: string;
@@ -52,6 +53,11 @@ function normalizeResult(
     goal: request.goal ?? "",
     sources,
   });
+  const analysis = analyzeProblemEvidence({
+    goal: request.goal ?? problemProfile.objective,
+    sources,
+    problemProfile,
+  });
 
   if (nodeIds.size !== parsed.graph.nodes.length) {
     throw new Error("The model returned duplicate graph node IDs.");
@@ -95,6 +101,7 @@ function normalizeResult(
     workspace: request.workspace?.trim() || "New workspace",
     summary: parsed.summary,
     problemProfile,
+    analysis,
     graph: { nodes, edges },
     opportunities,
     blueprints,

@@ -1,4 +1,5 @@
 import { buildProblemProfile, type ProblemProfile } from "./problem-taxonomy.ts";
+import { analyzeProblemEvidence, type EvidenceAnalysis } from "./evidence-analysis.ts";
 
 export type SourceKind = "csv" | "json" | "markdown" | "text";
 
@@ -7,6 +8,8 @@ export type SourceDocument = {
   name: string;
   kind: SourceKind;
   content: string;
+  size?: number;
+  truncated?: boolean;
 };
 
 export type GraphNodeType =
@@ -59,6 +62,7 @@ export type DiscoveryResult = {
   workspace: string;
   summary: string;
   problemProfile: ProblemProfile;
+  analysis: EvidenceAnalysis;
   graph: {
     nodes: GraphNode[];
     edges: GraphEdge[];
@@ -110,6 +114,11 @@ export type AppSpec = {
     itemSingular: string;
     itemPlural: string;
     metric: string;
+  };
+  setup?: {
+    target?: string;
+    metric?: string;
+    validation?: string;
   };
 };
 
@@ -336,6 +345,11 @@ export function discoverWorkspace(input: {
   });
   const searchable = `${goal ?? ""} ${sources.map((source) => `${source.name} ${source.content.slice(0, 300)}`).join(" ")}`.toLowerCase();
   const isComplaintProblem = searchable.includes("complaint");
+  const analysis = analyzeProblemEvidence({
+    goal: goal || problemProfile.objective,
+    sources,
+    problemProfile,
+  });
 
   if (!isComplaintProblem) {
     return discoverAdaptiveWorkspace({
@@ -352,6 +366,7 @@ export function discoverWorkspace(input: {
       goal ||
       "Reduce complaint response delays while preserving policy evidence and human approval.",
     problemProfile,
+    analysis,
     graph: { nodes, edges },
     opportunities,
     blueprints,
@@ -366,6 +381,11 @@ function discoverAdaptiveWorkspace(input: {
   problemProfile: ProblemProfile;
 }): DiscoveryResult {
   const { problemProfile, sources } = input;
+  const analysis = analyzeProblemEvidence({
+    goal: input.goal,
+    sources,
+    problemProfile,
+  });
   const source = sources[0];
   const evidenceId = source?.id ?? "uploaded-source";
   const secondEvidenceId = sources[1]?.id ?? evidenceId;
@@ -520,6 +540,7 @@ function discoverAdaptiveWorkspace(input: {
     workspace: input.workspace?.trim() || "New workspace",
     summary: `${problemProfile.interpretation} Neural Knights classified this as ${problemProfile.domainLabel} / ${problemProfile.useCaseLabel}.`,
     problemProfile,
+    analysis,
     graph: { nodes: adaptiveNodes, edges: adaptiveEdges },
     opportunities: adaptiveOpportunities,
     blueprints: adaptiveBlueprints,
@@ -531,6 +552,7 @@ export function generateAppSpec(
   blueprintId: string,
   suppliedBlueprint?: WorkflowBlueprint,
   problemProfile?: ProblemProfile,
+  analysisAnswers?: Record<string, string>,
 ): AppSpec {
   const selected = suppliedBlueprint ?? blueprints.find((blueprint) => blueprint.id === blueprintId) ?? blueprints[0];
   const isModelWork = problemProfile?.domain === "machine-learning" ||
@@ -607,5 +629,10 @@ export function generateAppSpec(
       : isModelWork
         ? { primaryView: "Experiments", itemSingular: "experiment", itemPlural: "experiments", metric: "candidate runs" }
         : { primaryView: "Work queue", itemSingular: "item", itemPlural: "items", metric: "open items" },
+    setup: isModelWork ? {
+      target: analysisAnswers?.["confirm-target"],
+      metric: analysisAnswers?.["confirm-metric"],
+      validation: analysisAnswers?.["confirm-validation"],
+    } : undefined,
   };
 }

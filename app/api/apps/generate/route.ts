@@ -16,6 +16,7 @@ type GenerateRequest = {
   workspace?: string;
   discoverySummary?: string;
   problemProfile?: ProblemProfile;
+  analysisAnswers?: Record<string, string>;
 };
 
 export async function POST(request: Request) {
@@ -25,6 +26,7 @@ export async function POST(request: Request) {
     body.blueprintId || body.blueprint?.id || "complaint-desk",
     body.blueprint,
     body.problemProfile,
+    body.analysisAnswers,
   );
   let appSpec: AppSpec = base;
   let mode: "live" | "deterministic-demo" | "deterministic-fallback" =
@@ -43,6 +45,7 @@ export async function POST(request: Request) {
           discoverySummary: body.discoverySummary || "",
           selectedBlueprint: body.blueprint,
           confirmedProblemClassification: body.problemProfile,
+          confirmedAnalysisDecisions: body.analysisAnswers,
           runtimeConstraints: {
             allowedActions: base.allowedActions,
             views: base.views,

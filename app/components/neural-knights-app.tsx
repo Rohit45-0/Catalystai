@@ -64,6 +64,7 @@ type SavedDeployment = {
   sources: SourceDocument[];
   discovery: DiscoveryResult | null;
   audit: string[];
+  analysisAnswers?: Record<string, string>;
 };
 
 type Complaint = {
@@ -196,6 +197,7 @@ export function NeuralKnightsApp({ initialMode = "builder" }: { initialMode?: "b
     seeded ? discoverWorkspace({ workspace: "Northstar Payments", sources: demoSources }).problemProfile : null,
   );
   const [classificationMode, setClassificationMode] = useState("");
+  const [analysisAnswers, setAnalysisAnswers] = useState<Record<string, string>>({});
   const [discoveryStage, setDiscoveryStage] = useState(0);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isEvaluating, setIsEvaluating] = useState(false);
@@ -246,6 +248,7 @@ export function NeuralKnightsApp({ initialMode = "builder" }: { initialMode?: "b
           setDiscovery(parsed.discovery);
           setProblemProfile(parsed.discovery?.problemProfile ?? null);
           setAudit(parsed.audit);
+          setAnalysisAnswers(parsed.analysisAnswers ?? {});
           return;
         }
         setAppSpec(parsed);
@@ -325,7 +328,9 @@ export function NeuralKnightsApp({ initialMode = "builder" }: { initialMode?: "b
         id: `upload-${Date.now()}-${index}`,
         name: file.name,
         kind: kindFromName(file.name),
-        content: (await file.text()).slice(0, 50_000),
+        content: (await file.text()).slice(0, 2_000_000),
+        size: file.size,
+        truncated: file.size > 2_000_000,
       })),
     );
     setSources((current) => [...current, ...next].slice(0, 6));
@@ -380,6 +385,7 @@ export function NeuralKnightsApp({ initialMode = "builder" }: { initialMode?: "b
       if (!response.ok) throw new Error("Discovery failed");
       const result = (await response.json()) as DiscoveryResult;
       setDiscovery(result);
+      setAnalysisAnswers({});
       setSelectedOpportunity(result.opportunities.find((item) => item.recommended)?.id ?? result.opportunities[0].id);
       setActiveView("map");
       setAudit((items) => [`Execution map created from ${result.sourceCount} sources`, ...items]);
@@ -410,6 +416,7 @@ export function NeuralKnightsApp({ initialMode = "builder" }: { initialMode?: "b
           workspace: discovery?.workspace,
           discoverySummary: discovery?.summary,
           problemProfile: discovery?.problemProfile,
+          analysisAnswers,
         }),
       });
       if (!response.ok) throw new Error("Generation failed");
@@ -431,7 +438,7 @@ export function NeuralKnightsApp({ initialMode = "builder" }: { initialMode?: "b
 
   function deployApplication() {
     if (!appSpec) return;
-    const deployment: SavedDeployment = { appSpec, workspace, goal, sources, discovery, audit };
+    const deployment: SavedDeployment = { appSpec, workspace, goal, sources, discovery, audit, analysisAnswers };
     window.localStorage.setItem("neural-knights-app-spec", JSON.stringify(deployment));
     router.push(`/apps/${appSpec.slug}`);
   }
@@ -589,6 +596,8 @@ export function NeuralKnightsApp({ initialMode = "builder" }: { initialMode?: "b
               isGenerating={isGenerating}
               appSpec={appSpec}
               deployApplication={deployApplication}
+              actionAnswers={analysisAnswers}
+              setActionAnswers={setAnalysisAnswers}
             />
           ) : null}
 
@@ -897,6 +906,8 @@ function MapView({
   isGenerating,
   appSpec,
   deployApplication,
+  actionAnswers,
+  setActionAnswers,
 }: {
   discovery: DiscoveryResult;
   selectedOpportunity: string;
@@ -905,6 +916,8 @@ function MapView({
   isGenerating: boolean;
   appSpec: AppSpec | null;
   deployApplication: () => void;
+  actionAnswers: Record<string, string>;
+  setActionAnswers: React.Dispatch<React.SetStateAction<Record<string, string>>>;
 }) {
   const selected = discovery.blueprints.find((item) => item.id === selectedOpportunity);
   const initialNode = discovery.graph.nodes.find((node) => node.type === "problem") ?? discovery.graph.nodes[0];
@@ -919,6 +932,25 @@ function MapView({
       100,
   );
   const primaryOpportunity = discovery.opportunities.find((item) => item.recommended) ?? discovery.opportunities[0];
+  const requiredActions = discovery.analysis.requiredActions;
+  const activeAction = requiredActions.find((action) => !actionAnswers[action.id]);
+  const activeAnswer = activeAction
+    ? actionAnswers[`${activeAction.id}-draft`] ?? activeAction.options[0] ?? ""
+    : "";
+  const knowledgeFlowIds = discovery.problemProfile.domain === "machine-learning"
+    ? ["source-data", "data-validation", "training-pipeline", "evaluation", "selection-gate"]
+    : discovery.graph.nodes.slice(0, 5).map((node) => node.id);
+  const knowledgeFlow = knowledgeFlowIds
+    .map((id) => discovery.graph.nodes.find((node) => node.id === id))
+    .filter((node): node is NonNullable<typeof node> => Boolean(node));
+
+  function confirmAction() {
+    if (!activeAction) return;
+    setActionAnswers((current) => ({
+      ...current,
+      [activeAction.id]: activeAnswer || "Confirmed",
+    }));
+  }
 
   return (
     <>
@@ -945,15 +977,94 @@ function MapView({
       ) : null}
 
       <div className="metric-strip">
-        <Metric value={`${discovery.graph.nodes.length}`} label="entities mapped" icon={Network} />
-        <Metric value={`${discovery.graph.edges.length}`} label="evidence links" icon={Link2} />
+        <Metric value={`${discovery.analysis.dataset?.rowsAnalyzed.toLocaleString() ?? discovery.graph.nodes.length}`} label={discovery.analysis.dataset ? "rows analyzed" : "entities mapped"} icon={Network} />
+        <Metric value={`${discovery.analysis.dataset?.columnCount ?? discovery.graph.edges.length}`} label={discovery.analysis.dataset ? "dataset columns" : "evidence links"} icon={Link2} />
         <Metric value={`${discovery.opportunities.length}`} label="apps recommended" icon={LayoutDashboard} />
-        <Metric value="1" label="approval boundary" icon={ShieldCheck} />
+        <Metric value={`${requiredActions.length - Object.keys(actionAnswers).filter((key) => !key.endsWith("-draft")).length}`} label="required decisions" icon={ShieldCheck} />
       </div>
+
+      <section className="analysis-grid">
+        <div className="surface insight-panel">
+          <div className="panel-heading">
+            <div><h2>What Neural Knights learned</h2><p>Concrete findings extracted from the supplied evidence</p></div>
+            <Activity size={18} />
+          </div>
+          <div className="insight-list">
+            {discovery.analysis.insights.map((insight) => (
+              <article className={`insight-${insight.type}`} key={insight.id}>
+                <span>{insight.type === "risk" ? <AlertTriangle size={15} /> : insight.type === "opportunity" ? <Sparkles size={15} /> : <BadgeCheck size={15} />}</span>
+                <div><strong>{insight.title}</strong><p>{insight.detail}</p><small>{insight.evidenceIds.join(" / ")}</small></div>
+              </article>
+            ))}
+          </div>
+        </div>
+
+        <aside className="surface next-action-panel">
+          <div className="next-action-top">
+            <span><ListChecks size={17} /></span>
+            <div><small>Next required action</small><strong>{activeAction?.title ?? "Problem setup complete"}</strong></div>
+            <em>{Math.min(Object.keys(actionAnswers).filter((key) => !key.endsWith("-draft")).length + 1, requiredActions.length)}/{requiredActions.length}</em>
+          </div>
+          {activeAction ? (
+            <>
+              <p>{activeAction.reason}</p>
+              <label>
+                <span>{activeAction.question}</span>
+                {activeAction.options.length ? (
+                  <select
+                    value={activeAnswer}
+                    onChange={(event) => setActionAnswers((current) => ({
+                      ...current,
+                      [`${activeAction.id}-draft`]: event.target.value,
+                    }))}
+                  >
+                    {activeAction.options.map((option) => <option key={option}>{option}</option>)}
+                  </select>
+                ) : (
+                  <input
+                    value={activeAnswer}
+                    onChange={(event) => setActionAnswers((current) => ({
+                      ...current,
+                      [`${activeAction.id}-draft`]: event.target.value,
+                    }))}
+                    placeholder="Enter the decision"
+                  />
+                )}
+              </label>
+              <button className="primary-button" onClick={confirmAction} disabled={!activeAnswer}>
+                <Check size={14} /> Confirm and continue
+              </button>
+            </>
+          ) : (
+            <div className="actions-complete">
+              <CheckCircle2 size={23} />
+              <strong>Ready for the first baseline</strong>
+              <span>The target, metric, and validation plan are confirmed.</span>
+            </div>
+          )}
+          {Object.entries(actionAnswers).filter(([key]) => !key.endsWith("-draft")).length ? (
+            <div className="confirmed-actions">
+              {requiredActions.filter((action) => actionAnswers[action.id]).map((action) => (
+                <span key={action.id}><Check size={11} /> {actionAnswers[action.id]}</span>
+              ))}
+            </div>
+          ) : null}
+        </aside>
+      </section>
 
       <div className="map-layout">
         <section className="surface graph-surface">
-          <div className="panel-heading"><div><h2>How work happens today</h2><p>Select any entity to inspect the evidence behind it.</p></div><span className="confidence-key"><i /> {averageConfidence}% avg. confidence</span></div>
+          <div className="panel-heading"><div><h2>Evidence knowledge graph</h2><p>Select any entity to inspect the evidence and relationships behind it.</p></div><span className="confidence-key"><i /> {averageConfidence}% avg. confidence</span></div>
+          <div className="knowledge-flow" aria-label="Recommended evidence path">
+            {knowledgeFlow.map((node, index) => (
+              <div key={node.id}>
+                <button onClick={() => setSelectedNodeId(node.id)} className={selectedNode?.id === node.id ? "knowledge-flow-active" : ""}>
+                  <small>{node.type}</small><strong>{node.label}</strong>
+                </button>
+                {index < knowledgeFlow.length - 1 ? <ChevronRight size={15} /> : null}
+              </div>
+            ))}
+          </div>
           <div className="graph-board">
             {discovery.graph.nodes.map((node) => {
               const Icon = nodeIcons[node.type];
@@ -970,7 +1081,7 @@ function MapView({
             })}
           </div>
           <div className="relationship-list">
-            {discovery.graph.edges.slice(0, 4).map((edge) => {
+            {discovery.graph.edges.map((edge) => {
               const source = discovery.graph.nodes.find((node) => node.id === edge.source);
               const target = discovery.graph.nodes.find((node) => node.id === edge.target);
               return (
@@ -1097,6 +1208,7 @@ function GeneratedAppView({
     metric: "open complaints",
   };
   const isModelWorkbench = runtimeKind === "model-workbench";
+  const modelSetupComplete = Boolean(appSpec.setup?.target && appSpec.setup?.metric && appSpec.setup?.validation);
   const evaluationChecks = isModelWorkbench
     ? [
         "Target and success metric must be confirmed before training",
@@ -1135,7 +1247,7 @@ function GeneratedAppView({
           <>
             <div className="queue-metrics">
               <Metric value="1" label="dataset connected" icon={Database} />
-              <Metric value="Needs input" label="target column" icon={CircleDot} />
+              <Metric value={appSpec.setup?.target ? "Confirmed" : "Needs input"} label={appSpec.setup?.target ?? "target column"} icon={CircleDot} />
               <Metric value="0" label="completed runs" icon={Activity} />
               <Metric value="Required" label="selection approval" icon={LockKeyhole} />
             </div>
@@ -1145,17 +1257,17 @@ function GeneratedAppView({
                 <div className="training-objective">
                   <span>01</span>
                   <div><strong>Confirm prediction target</strong><p>Choose the column representing the output to predict, such as biogas yield or production volume.</p></div>
-                  <em>Needs input</em>
+                  <em>{appSpec.setup?.target ?? "Needs input"}</em>
                 </div>
                 <div className="training-objective">
                   <span>02</span>
                   <div><strong>Choose evaluation metric</strong><p>Define how improvement will be measured before comparing models.</p></div>
-                  <em>Needs input</em>
+                  <em>{appSpec.setup?.metric ?? "Needs input"}</em>
                 </div>
                 <div className="training-objective">
                   <span>03</span>
-                  <div><strong>Run reproducible baseline</strong><p>Validate the data, preserve a holdout split, and train the first benchmark.</p></div>
-                  <button className="secondary-button" onClick={runEvaluations} disabled={isEvaluating}>
+                  <div><strong>Run reproducible baseline</strong><p>{appSpec.setup?.validation ? `${appSpec.setup.validation} selected. The first benchmark can now be prepared.` : "Validate the data, preserve a holdout split, and train the first benchmark."}</p></div>
+                  <button className="secondary-button" onClick={runEvaluations} disabled={isEvaluating || !modelSetupComplete}>
                     {isEvaluating ? <LoaderCircle className="spin" size={14} /> : <Activity size={14} />} {isEvaluating ? "Preparing" : "Prepare run"}
                   </button>
                 </div>
@@ -1163,14 +1275,14 @@ function GeneratedAppView({
               <aside className="surface experiment-queue">
                 <div className="panel-heading"><div><h2>Candidate runs</h2><p>No invented model metrics</p></div><ListChecks size={18} /></div>
                 {[
-                  ["Baseline", "Waiting for target and metric"],
+                  ["Baseline", modelSetupComplete ? "Ready with confirmed setup" : "Waiting for target, metric, and validation"],
                   ["Candidate A", "Blocked until baseline completes"],
                   ["Candidate B", "Blocked until baseline completes"],
                 ].map(([name, status], index) => (
                   <div className="experiment-row" key={name}>
                     <span>{String(index + 1).padStart(2, "0")}</span>
                     <div><strong>{name}</strong><small>{status}</small></div>
-                    <em>{index === 0 ? "Ready" : "Blocked"}</em>
+                    <em>{index === 0 ? (modelSetupComplete ? "Ready" : "Setup") : "Blocked"}</em>
                   </div>
                 ))}
               </aside>

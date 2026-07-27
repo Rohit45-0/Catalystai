@@ -8,6 +8,8 @@ The first version proved the story visually but behaved too much like a prepared
 
 Problem understanding now precedes generation. The user confirms a domain and subproblem before Neural Knights creates an execution map, and the deterministic fallback uses domain-specific playbooks rather than always returning the complaint demo.
 
+The model-training path now produces evidence-derived dataset insights and a sequenced decision checklist. Confirmed target, metric, and validation choices are carried into the generated model workbench.
+
 ## Highest-priority missing pieces
 
 ### 1. Real design partners

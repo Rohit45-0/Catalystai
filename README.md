@@ -18,6 +18,8 @@ The first complete workflow is complaint operations for a regulated fintech team
 
 The broader classifier currently covers machine learning and data, operations and compliance, customer support, sales and marketing, logistics and commerce, and finance and back-office work. Each area has explicit subproblems, and deterministic domain playbooks keep the zero-cost fallback relevant.
 
+For machine-learning CSVs, the execution map profiles up to 20,000 rows locally, identifies likely targets and numeric inputs, checks missing values and time ordering, screens simple feature relationships, and asks the user to confirm the target, metric, and validation strategy before preparing a baseline.
+
 No API key or external account is required for the deterministic demo. When an OpenAI API key is configured, discovery and application generation use live structured model output and fall back safely if the request fails. The included demo workspace is synthetic.
 
 ## Run locally

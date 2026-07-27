@@ -17,6 +17,9 @@ test("exposes the Neural Knights discovery-to-deployment experience", async () =
   assert.match(app, /Understand the problem first/);
   assert.match(app, /Confirm and build the map/);
   assert.match(app, /Company execution map/);
+  assert.match(app, /What Neural Knights learned/);
+  assert.match(app, /Next required action/);
+  assert.match(app, /Evidence knowledge graph/);
   assert.match(app, /Approve and queue/);
   assert.match(app, /Run checks again/);
   assert.match(app, /Export JSON/);
@@ -34,13 +37,25 @@ test("classifies a biogas dataset as model training and builds an ML-specific pa
     id: "biogas-data",
     name: "biogas_traditional_hourly.csv",
     kind: "csv",
-    content: "temperature,ph,feed_rate,methane,biogas_output\n35,7.1,20,62,145\n36,7.0,21,64,152",
+    content: [
+      "timestamp,temperature,ph,feed_rate,methane,biogas_output",
+      "2026-01-01T01:00:00Z,35,7.1,20,62,145",
+      "2026-01-01T02:00:00Z,36,7.0,21,64,152",
+      "2026-01-01T03:00:00Z,37,6.9,22,65,158",
+      "2026-01-01T04:00:00Z,38,7.2,23,67,164",
+      "2026-01-01T05:00:00Z,39,7.1,24,68,171",
+      "2026-01-01T06:00:00Z,40,7.0,25,70,178",
+    ].join("\n"),
   }];
   const goal = "I want to generate more biogas with the current components by training a machine learning model.";
   const profile = buildProblemProfile({ goal, sources });
   const result = discoverWorkspace({ workspace: "Biogas", goal, sources, problemProfile: profile });
   const selected = result.blueprints.find((blueprint) => blueprint.id === "model-training-workbench");
-  const app = generateAppSpec("model-training-workbench", selected, profile);
+  const app = generateAppSpec("model-training-workbench", selected, profile, {
+    "confirm-target": "biogas_output",
+    "confirm-metric": "MAE - average absolute error",
+    "confirm-validation": "Chronological holdout",
+  });
 
   assert.equal(profile.domain, "machine-learning");
   assert.equal(profile.useCase, "model-training-optimization");
@@ -50,8 +65,14 @@ test("classifies a biogas dataset as model training and builds an ML-specific pa
   assert.ok(result.graph.nodes.some((node) => node.id === "evaluation"));
   assert.ok(result.graph.nodes.every((node) => !/complaint/i.test(`${node.label} ${node.detail}`)));
   assert.equal(result.opportunities[0].id, "model-training-workbench");
+  assert.equal(result.analysis.dataset.rowsAnalyzed, 6);
+  assert.equal(result.analysis.dataset.targetCandidates[0], "biogas_output");
+  assert.ok(result.analysis.insights.some((insight) => /strongest simple relationship/.test(insight.title)));
+  assert.equal(result.analysis.requiredActions[0].id, "confirm-target");
   assert.equal(app.runtimeKind, "model-workbench");
   assert.equal(app.slug, "generated-workspace");
+  assert.equal(app.setup.target, "biogas_output");
+  assert.equal(app.setup.validation, "Chronological holdout");
   assert.ok(app.rules.every((rule) => !/complaint/i.test(`${rule.condition} ${rule.outcome}`)));
 });
 
